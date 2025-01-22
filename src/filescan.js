@@ -1,7 +1,8 @@
-const fs = require('node:fs/promises')
-const path = require('path')
-const NodeID3 = require('node-id3').Promise
-const logger = require('./logger')
+const fs = require('node:fs/promises');
+const path = require('path');
+const NodeID3 = require('node-id3').Promise;
+const logger = require('./logger');
+const db = require('./db');
 
 /* SAMPLE: {
 	"title":"The Glass Prison", // TIT2
@@ -27,11 +28,13 @@ async function readid3(filepath) {
 async function filedetails(filepath) {
     const basename = path.basename(filepath)
     const dirname = path.dirname(filepath)
+    const fullname = filepath
     const stats = await fs.stat(filepath)
     const tags = await readid3(filepath)
     return {
         basename,
         dirname,
+        fullname,
         atime: stats.atime,
         mtime: stats.mtime,
         ctime: stats.ctime,
@@ -42,11 +45,10 @@ async function filedetails(filepath) {
 
 async function scan() {
     const folder = './private' // TODO
-    logger.info(folder)
-    logger.debug(folder)
-    logger.trace(folder)
+    logger.debug(`Start scanning on ${folder} ...`)
+    //
     const flist = await fs.readdir(folder, { recursive: true, withFileTypes: true })
-    const result = await Promise.all(
+    const items = await Promise.all(
         flist
             .filter(f => f.isFile())
             .map( async (f) => {
@@ -54,9 +56,13 @@ async function scan() {
                 return await filedetails(fpath)
             })
     )
-    
-    logger.debug(result)
-    return result
+    logger.info(`Scan finished: found ${items.length} mp3 files`)
+    //
+    logger.info(`DB updating ...`)
+    for await (let item of items) {
+        db.updateSong(item);
+    }
+    logger.info(`DB updated!`)
 }
 
 scan()
