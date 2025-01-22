@@ -26,12 +26,23 @@ fastify.get('/', function(req, reply) {
     reply.send({ app: true });
 })
 
-fastify.get('/some', function(req, reply) {
-    const someid = req.query.id;
-    const data = db.getSomeData(someid);
+fastify.get('/search/artists', async function(req, reply) {
+    const name = req.query.name;
+    const data = await db.getArtists(name);
     reply.send(data);
 })
 
+fastify.get('/search/albums', async function(req, reply) {
+    const title = req.query.title;
+    const data = await db.getAlbums(title);
+    reply.send(data);
+})
+
+fastify.get('/search/song', async function(req, reply) {
+    const id = req.query.id;
+    const data = await db.getSongInfo(id);
+    reply.send(data);
+})
 
 module.exports.run = () => {
     fastify.listen( { port: process.env.PORT, host: '0.0.0.0' }, function(err) {

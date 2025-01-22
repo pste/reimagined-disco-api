@@ -4,14 +4,15 @@ const NodeID3 = require('node-id3').Promise;
 const logger = require('./logger');
 const db = require('./db');
 
-/* SAMPLE: {
+/* 
+SAMPLE: {
 	"title":"The Glass Prison", // TIT2
 	"artist":"Dream Theater",   // TPE1
 	"album":"Six Degrees of Inner Turbulence [Disc 1]", // TALB
-	"trackNumber":"01", // TRCK
-	"year":"2002", // TYER
-	"genre":"Progressive", // TCON
-	"partOfSet":"1/2" // TPOS
+	"trackNumber":"01",         // TRCK
+	"year":"2002",              // TYER
+	"genre":"Progressive",      // TCON
+	"partOfSet":"1/2"           // TPOS
 }
 */
 async function readid3(filepath) {
@@ -19,18 +20,17 @@ async function readid3(filepath) {
         noRaw: true,
         include: ['TIT2','TPE1','TALB','TRCK','TYER','TCON','TPOS'],
         exclude: ['APIC'] // image
-    }
-    const tags = await NodeID3.read(filepath, options)
-    //logger.debug(tags, `FILE: ${filepath}`)
-    return tags
+    };
+    const tags = await NodeID3.read(filepath, options);
+    return tags;
 }
 
 async function filedetails(filepath) {
-    const basename = path.basename(filepath)
-    const dirname = path.dirname(filepath)
-    const fullname = filepath
-    const stats = await fs.stat(filepath)
-    const tags = await readid3(filepath)
+    const basename = path.basename(filepath);
+    const dirname = path.dirname(filepath);
+    const fullname = filepath;
+    const stats = await fs.stat(filepath);
+    const tags = await readid3(filepath);
     return {
         basename,
         dirname,
@@ -40,29 +40,50 @@ async function filedetails(filepath) {
         ctime: stats.ctime,
         birthtime: stats.birthtime,
         tags
-    }
+    };
 }
 
 async function scan() {
-    const folder = './private' // TODO
-    logger.debug(`Start scanning on ${folder} ...`)
+    const folder = './private'; // TODO
+    logger.info(`Start scanning on ${folder} ...`);
     //
-    const flist = await fs.readdir(folder, { recursive: true, withFileTypes: true })
+    const flist = await fs.readdir(folder, { recursive: true, withFileTypes: true });
     const items = await Promise.all(
         flist
-            .filter(f => f.isFile())
-            .map( async (f) => {
-                const fpath = path.join(f.path, f.name)
-                return await filedetails(fpath)
+            .filter(f => f.isFile() && f.name.toLowerCase().endsWith('.mp3'))
+            .map(async (f) => {
+                const fpath = path.join(f.path, f.name);
+                return await filedetails(fpath);
             })
     )
-    logger.info(`Scan finished: found ${items.length} mp3 files`)
+    logger.info(`Scan finished: found ${items.length} mp3 files`);
     //
-    logger.info(`DB updating ...`)
+    logger.info(`DB updating ...`);
     for await (let item of items) {
-        db.updateSong(item);
+        await db.updateSong(item);
     }
-    logger.info(`DB updated!`)
+    logger.info(`DB cleaning ...`);
+    const dbfiles = await db.getFiles();
+    for await (let file of dbfiles) {
+        if (items.findIndex( item => item.basename===file.file_name && item.dirname===file.file_path) < 0) {
+            await db.removeFile(file.file_id);
+        }
+    }
+    logger.info(`DB done!`);
 }
 
-scan()
+
+/////////////////////////////////////////////////////////////////
+
+module.exports = {
+    scan,
+}
+/*
+scan().then(async () => {
+    const d1 = await db.getAlbums("TIME");
+    logger.debug(d1)
+    const d2 = await db.getArtists("T")
+    logger.debug(d2)
+    const d3 = await db.stats();
+    logger.debug(d3);
+})*/

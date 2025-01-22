@@ -1,3 +1,5 @@
 const server = require('./src/server');
+const filescan = require('./src/filescan');
 
-server.run()
+filescan.scan()
+    .then(() => server.run());

@@ -4,8 +4,7 @@
   "main": "app.js",
   "scripts": {
     "dev": "node -r dotenv/config app.js dotenv_config_path=$PWD/.env",
-    "prod": "node app.js",
-    "mytest": "node -r dotenv/config ./src/filescan dotenv_config_path=$PWD/.env"
+    "prod": "node app.js"
   },
   "author": "pste",
   "license": "ISC",

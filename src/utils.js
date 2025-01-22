@@ -7,6 +7,13 @@ function parseAlbumNumber(val) {
     else return "1";
 }
 
+function parseNumber(val) {
+    const rtn = Number(val)
+    if (isNaN(rtn)) return null
+    return rtn
+}
+
 module.exports = {
     parseAlbumNumber,
+    parseNumber
 }
