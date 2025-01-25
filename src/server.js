@@ -10,9 +10,13 @@ const fastifyOptions = {
 }
 
 const fastify = require('fastify')( fastifyOptions );
+const cors = require('@fastify/cors');
 
 if (process.env.DEVSERVER) {
     logger.info('DEV SERVER MODE ON');
+    fastify.register(cors, {
+        origin: "*"
+    });
 }
 else {
     const bearerAuthPlugin = require('@fastify/bearer-auth');
@@ -29,19 +33,25 @@ fastify.get('/', function(req, reply) {
 fastify.get('/search/artists', async function(req, reply) {
     const name = req.query.name;
     const data = await db.getArtists(name);
-    reply.send(data);
+    await reply.send(data);
 })
 
 fastify.get('/search/albums', async function(req, reply) {
     const title = req.query.title;
     const data = await db.getAlbums(title);
-    reply.send(data);
+    await reply.send(data);
+})
+
+fastify.get('/search/songs', async function(req, reply) {
+    const title = req.query.title;
+    const data = await db.getSongs(title);
+    await reply.send(data);
 })
 
 fastify.get('/search/song', async function(req, reply) {
     const id = req.query.id;
     const data = await db.getSongInfo(id);
-    reply.send(data);
+    await reply.send(data);
 })
 
 module.exports.run = () => {
