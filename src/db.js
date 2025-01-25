@@ -98,30 +98,6 @@ async function removeFile(file_id) {
 
 /////////////////////////////////////////////////////////////////
 
-async function getAlbums(title) {
-    const client = await pool.connect();
-    const stm = 'select * from albums where title ilike $1';
-    const pars = [`%${title}%`];
-    logger.trace(pars, stm);
-    const res = await client.query(stm, pars);
-    const rows = res.rows;
-
-    client.release();
-    return rows;
-}
-
-async function getAlbum(album_id) {
-    const client = await pool.connect();
-    const stm = 'select * from albums where album_id = $1';
-    const pars = [album_id];
-    logger.trace(pars, stm);
-    const res = await client.query(stm, pars);
-    const rows = res.rows;
-
-    client.release();
-    return rows[0];
-}
-
 async function getArtists(name) {
     const client = await pool.connect();
     const stm = 'select * from artists where "name" ilike $1';
@@ -146,6 +122,54 @@ async function getArtist(artist_id) {
     return rows[0];
 }
 
+async function getAlbums(title) {
+    const client = await pool.connect();
+    const stm = 'select * from albums where title ilike $1';
+    const pars = [`%${title}%`];
+    logger.trace(pars, stm);
+    const res = await client.query(stm, pars);
+    const rows = res.rows;
+
+    client.release();
+    return rows;
+}
+
+async function getAlbum(album_id) {
+    const client = await pool.connect();
+    const stm = 'select * from albums where album_id = $1';
+    const pars = [album_id];
+    logger.trace(pars, stm);
+    const res = await client.query(stm, pars);
+    const rows = res.rows;
+
+    client.release();
+    return rows[0];
+}
+
+async function getSongs(title) {
+    const client = await pool.connect();
+    const stm = 'select * from songs where title ilike $1';
+    const pars = [`%${title}%`];
+    logger.trace(pars, stm);
+    const res = await client.query(stm, pars);
+    const rows = res.rows;
+
+    client.release();
+    return rows;
+}
+
+async function getSong(song_id) {
+    const client = await pool.connect();
+    const stm = 'select * from songs where song_id = $1';
+    const pars = [song_id];
+    logger.trace(pars, stm);
+    const res = await client.query(stm, pars);
+    const rows = res.rows;
+
+    client.release();
+    return rows[0];
+}
+
 async function getFiles() {
     const client = await pool.connect();
     const stm = 'select * from files';
@@ -161,18 +185,6 @@ async function getFiles() {
 async function getFile(song_id) {
     const client = await pool.connect();
     const stm = 'select * from files where song_id = $1';
-    const pars = [song_id];
-    logger.trace(pars, stm);
-    const res = await client.query(stm, pars);
-    const rows = res.rows;
-
-    client.release();
-    return rows[0];
-}
-
-async function getSong(song_id) {
-    const client = await pool.connect();
-    const stm = 'select * from songs where song_id = $1';
     const pars = [song_id];
     logger.trace(pars, stm);
     const res = await client.query(stm, pars);
@@ -225,6 +237,7 @@ async function updateSong(fileinfo) {
     const songdata = {
         filepath: fileinfo.dirname, 
         filename: fileinfo.basename,
+        modified: Math.max(fileinfo.mtime, fileinfo.ctime), // last time when file/attributes has changed
         title: fileinfo.tags.title,
 		artist: fileinfo.tags.artist || 'UNKNOWN',
 		album: fileinfo.tags.album || 'UNKNOWN',
@@ -251,6 +264,7 @@ async function getSongInfo(song_id) {
     const songdata = {
         filepath: file.file_path, 
         filename: file.file_name,
+        modified: file.modified,
         title: song.title,
 		artist: artist.name,
 		album: album.title,
@@ -276,11 +290,12 @@ async function stats() {
 /////////////////////////////////////////////////////////////////
 
 module.exports = {
-    stats,
-    getAlbums,
     getArtists,
+    getAlbums,
+    getSongs,
     getFiles,
     getSongInfo,
+    stats,
     updateSong,
     removeFile,
 }
