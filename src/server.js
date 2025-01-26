@@ -31,19 +31,19 @@ fastify.get('/', function(req, reply) {
 })
 
 fastify.get('/search/artists', async function(req, reply) {
-    const name = req.query.name;
+    const name = req?.query?.name || '';
     const data = await db.getArtists(name);
     await reply.send(data);
 })
 
 fastify.get('/search/albums', async function(req, reply) {
-    const title = req.query.title;
+    const title = req?.query?.title || '';
     const data = await db.getAlbums(title);
     await reply.send(data);
 })
 
 fastify.get('/search/songs', async function(req, reply) {
-    const title = req.query.title;
+    const title = req?.query?.title || '';
     const data = await db.getSongs(title);
     await reply.send(data);
 })

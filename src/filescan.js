@@ -60,12 +60,14 @@ async function scan() {
     //
     logger.info(`DB updating ...`);
     for await (let item of items) {
+        logger.trace(item, "DB UPDATE");
         await db.updateSong(item);
     }
     logger.info(`DB cleaning ...`);
     const dbfiles = await db.getFiles();
     for await (let file of dbfiles) {
         if (items.findIndex( item => item.basename===file.file_name && item.dirname===file.file_path) < 0) {
+            logger.trace(file, "DB REMOVE");
             await db.removeFile(file.file_id);
         }
     }

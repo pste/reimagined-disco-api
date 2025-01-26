@@ -54,12 +54,12 @@ async function upsertSong(title, tracknr, discnr, album_id) {
     return rows[0];
 }
 
-async function upsertFile(file_path, file_name, song_id) {
+async function upsertFile(song_id, file_path, file_name, modified) {
     const client = await pool.connect();
-    const stm = 'insert into files (file_path, file_name, song_id) values ($1,$2,$3) \
-                on conflict(song_id) do update set file_path=$1, file_name=$2 \
+    const stm = 'insert into files (song_id, file_path, file_name, modified) values ($1,$2,$3,$4) \
+                on conflict(song_id) do update set file_path=$2, file_name=$3, modified=$4 \
                 returning *';
-    const pars = [file_path, file_name, song_id];
+    const pars = [song_id, file_path, file_name, modified];
     logger.trace(pars, stm);
     const res = await client.query(stm, pars);
     const rows = res.rows;
@@ -72,22 +72,22 @@ async function removeFile(file_id) {
     let stm, pars;
     // delete file
     const client = await pool.connect();
-    stm = 'delete files where file_id=$1';
+    stm = 'delete from files where file_id=$1';
     pars = [file_id];
     logger.trace(pars, stm);
     await client.query(stm, pars);
     // clear dangling songs
-    stm = 'delete songs where song_id not in (select song_id from files)';
+    stm = 'delete from songs where song_id not in (select song_id from files)';
     pars = [];
     logger.trace(pars, stm);
     await client.query(stm, pars);
     // clear empty albums
-    stm = 'delete albums where album_id not in (select album_id from songs)';
+    stm = 'delete from albums where album_id not in (select album_id from songs)';
     pars = [];
     logger.trace(pars, stm);
     await client.query(stm, pars);
     // clear empty artists
-    stm = 'delete artists where artist_id not in (select artist_id from albums)';
+    stm = 'delete from artists where artist_id not in (select artist_id from albums)';
     pars = [];
     logger.trace(pars, stm);
     await client.query(stm, pars);
@@ -237,7 +237,7 @@ async function updateSong(fileinfo) {
     const songdata = {
         filepath: fileinfo.dirname, 
         filename: fileinfo.basename,
-        modified: Math.max(fileinfo.mtime, fileinfo.ctime), // last time when file/attributes has changed
+        modified: utils.maxDate(fileinfo.mtime, fileinfo.ctime), // last time when file/attributes has changed
         title: fileinfo.tags.title,
 		artist: fileinfo.tags.artist || 'UNKNOWN',
 		album: fileinfo.tags.album || 'UNKNOWN',
@@ -252,7 +252,7 @@ async function updateSong(fileinfo) {
     const album = await upsertAlbum(songdata.album, songdata.artist, songdata.year, songdata.genre);
     const song = await upsertSong(songdata.title, songdata.trackNumber, songdata.discNumber, album.album_id);
     logger.trace(song)
-    const file = await upsertFile(songdata.filepath, songdata.filename, song.song_id);
+    const file = await upsertFile(song.song_id, songdata.filepath, songdata.filename, songdata.modified);
     return file;
 }
 
