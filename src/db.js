@@ -122,10 +122,22 @@ async function getArtist(artist_id) {
     return rows[0];
 }
 
-async function getAlbums(title) {
+async function getAlbumsByTitle(title) {
     const client = await pool.connect();
     const stm = 'select * from albums where title ilike $1';
     const pars = [`%${title}%`];
+    logger.trace(pars, stm);
+    const res = await client.query(stm, pars);
+    const rows = res.rows;
+
+    client.release();
+    return rows;
+}
+
+async function getAlbumsByArtist(artist_id) {
+    const client = await pool.connect();
+    const stm = 'select * from albums where artist_id = $1';
+    const pars = [artist_id];
     logger.trace(pars, stm);
     const res = await client.query(stm, pars);
     const rows = res.rows;
@@ -291,7 +303,8 @@ async function stats() {
 
 module.exports = {
     getArtists,
-    getAlbums,
+    getAlbumsByTitle,
+    getAlbumsByArtist,
     getSongs,
     getFiles,
     getSongInfo,

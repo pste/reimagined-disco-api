@@ -80,12 +80,3 @@ async function scan() {
 module.exports = {
     scan,
 }
-/*
-scan().then(async () => {
-    const d1 = await db.getAlbums("TIME");
-    logger.debug(d1)
-    const d2 = await db.getArtists("T")
-    logger.debug(d2)
-    const d3 = await db.stats();
-    logger.debug(d3);
-})*/
