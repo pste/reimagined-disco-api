@@ -39,14 +39,21 @@ fastify.get('/search/artists', async function(req, reply) {
 fastify.get('/search/albums', async function(req, reply) {
     const title = req?.query?.title || '';
     const artistid = req?.query?.artistid;
+    // get a list of albums
+    let albums = [];
     if (artistid) {
-        const data = await db.getAlbumsByArtist(artistid);
-        await reply.send(data);
+        albums = await db.getAlbumsByArtist(artistid);
     }
     else { //default to this
-        const data = await db.getAlbumsByTitle(title);
-        await reply.send(data);
+        albums = await db.getAlbumsByTitle(title);
     }
+    // normalize output
+    const data = await Promise.all(
+        albums.map( async (album) => {
+            return await db.getAlbumInfo(album.album_id);
+        })
+    );
+    await reply.send(data);
 })
 
 fastify.get('/search/songs', async function(req, reply) {

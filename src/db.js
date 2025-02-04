@@ -68,20 +68,47 @@ async function upsertFile(song_id, file_path, file_name, modified) {
     return rows[0];
 }
 
-async function removeFile(file_id) {
+async function upsertCover(album_id, image_buffer) {
+    // var arrByte = Uint8Array.from(data)
+    const client = await pool.connect();
+    const stm = 'insert into covers (album_id, imagedata) values ($1,$2) \
+                on conflict(album_id) do update set imagedata=$2'; // this does not return data
+    const imagedata = Uint8Array.from(image_buffer);
+    const pars = [album_id, imagedata];
+    logger.trace({album_id, imagedata: '..'}, stm);
+    const res = await client.query(stm, pars);
+    const rows = res.rows;
+
+    client.release();
+    return rows[0];
+}
+
+async function removeFile(song_id) {
     let stm, pars;
     // delete file
     const client = await pool.connect();
-    stm = 'delete from files where file_id=$1';
-    pars = [file_id];
+    stm = 'delete from files where song_id=$1';
+    pars = [song_id];
     logger.trace(pars, stm);
     await client.query(stm, pars);
-    // clear dangling songs
-    stm = 'delete from songs where song_id not in (select song_id from files)';
+    // delete song
+    stm = 'delete from songs where song_id=$1';
+    pars = [song_id];
+    logger.trace(pars, stm);
+    await client.query(stm, pars);
+    //
+    client.release();
+    return;
+}
+
+async function clearEmptyAlbums() {
+    let stm, pars;
+    const client = await pool.connect();
+    // clear empty albums
+    stm = 'delete from covers where album_id not in (select album_id from songs)';
     pars = [];
     logger.trace(pars, stm);
     await client.query(stm, pars);
-    // clear empty albums
     stm = 'delete from albums where album_id not in (select album_id from songs)';
     pars = [];
     logger.trace(pars, stm);
@@ -93,7 +120,7 @@ async function removeFile(file_id) {
     await client.query(stm, pars);
     //
     client.release();
-    return rows;
+    return;
 }
 
 /////////////////////////////////////////////////////////////////
@@ -156,6 +183,23 @@ async function getAlbum(album_id) {
 
     client.release();
     return rows[0];
+}
+
+async function getCover(album_id) {
+    const client = await pool.connect();
+    const stm = 'select * from covers where album_id = $1';
+    const pars = [album_id];
+    logger.trace(pars, stm);
+    const res = await client.query(stm, pars);
+    const rows = res.rows;
+
+    client.release();
+    if (rows.length === 1) {
+        return rows[0];
+    }
+    else {
+        return undefined;
+    }
 }
 
 async function getSongs(title) {
@@ -257,6 +301,7 @@ async function updateSong(fileinfo) {
 		genre: fileinfo.tags.genre || 'UNKNOWN',
 		trackNumber: utils.parseNumber(fileinfo.tags.trackNumber),
 		discNumber: utils.parseAlbumNumber(fileinfo.tags.partOfSet),
+        cover: fileinfo.tags?.image?.imageBuffer // .data ?
     }
     if (songdata.artist === 'UNKNOWN') {
         logger.debug(songdata);
@@ -265,27 +310,43 @@ async function updateSong(fileinfo) {
     const song = await upsertSong(songdata.title, songdata.trackNumber, songdata.discNumber, album.album_id);
     logger.trace(song)
     const file = await upsertFile(song.song_id, songdata.filepath, songdata.filename, songdata.modified);
+    if (songdata.cover) {
+        await upsertCover(song.album_id, songdata.cover);
+    }
     return file;
+}
+
+async function getAlbumInfo(album_id) {
+    const album = await getAlbum(album_id);
+    const cover = await getCover(album_id);
+    const artist = await getArtist(album.artist_id);
+
+    const data = {
+        album_id,
+		artist: artist.name,
+		album: album.title,
+		year: album.year,
+		genre: album.genre,
+        cover: cover?.imagedata
+    }
+    return data;
 }
 
 async function getSongInfo(song_id) {
     const file = await getFile(song_id);
     const song = await getSong(song_id);
-    const album = await getAlbum(song.album_id);
-    const artist = await getArtist(album.artist_id);
-    const songdata = {
+    const albumdata = await getAlbumInfo(song.album_id);
+
+    const data = {
+        song_id,
         filepath: file.file_path, 
         filename: file.file_name,
         modified: file.modified,
         title: song.title,
-		artist: artist.name,
-		album: album.title,
-		year: album.year,
-		genre: album.genre,
 		trackNumber: song.track_nr,
 		discNumber: song.disc_nr,
     }
-    return songdata;
+    return Object.assign(albumdata, data);
 }
 
 async function stats() {
@@ -308,7 +369,9 @@ module.exports = {
     getSongs,
     getFiles,
     getSongInfo,
+    getAlbumInfo,
     stats,
     updateSong,
     removeFile,
+    clearEmptyAlbums,
 }
