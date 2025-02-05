@@ -54,16 +54,25 @@ async function upsertSong(title, tracknr, discnr, album_id) {
     return rows[0];
 }
 
-async function upsertFile(song_id, file_path, file_name, modified) {
+async function upsertFile(song_id, basedir, file_path, file_name, modified) {
+    let stm, pars, res;
     const client = await pool.connect();
-    const stm = 'insert into files (song_id, file_path, file_name, modified) values ($1,$2,$3,$4) \
-                on conflict(song_id) do update set file_path=$2, file_name=$3, modified=$4 \
-                returning *';
-    const pars = [song_id, file_path, file_name, modified];
+    //
+    stm = 'insert into sources ("path") values ($1) on conflict("path") do update set "path"=$1 returning *' // trick to return the row always (can be better? TODO)
+    pars = [basedir];
     logger.trace(pars, stm);
-    const res = await client.query(stm, pars);
+    res = await client.query(stm, pars);
+    logger.trace(res, "==============================")
+    const sources = res.rows[0]
+    //
+    stm = 'insert into files (source_id, song_id, file_path, file_name, modified) values ($1,$2,$3,$4,$5) \
+                on conflict(source_id, file_path, file_name) do update set song_id=$2, modified=$5 \
+                returning *';
+    pars = [sources.source_id, song_id, file_path, file_name, modified];
+    logger.trace(pars, stm);
+    res = await client.query(stm, pars);
     const rows = res.rows;
-
+    //
     client.release();
     return rows[0];
 }
@@ -228,7 +237,7 @@ async function getSong(song_id) {
 
 async function getFiles() {
     const client = await pool.connect();
-    const stm = 'select * from files';
+    const stm = 'select so."path" as basedir,fi.* from files fi inner join sources so on fi.source_id=so.source_id';
     const pars = [];
     logger.trace(pars, stm);
     const res = await client.query(stm, pars);
@@ -238,7 +247,7 @@ async function getFiles() {
     return rows;
 }
 
-async function getFile(song_id) {
+async function getSongFile(song_id) {
     const client = await pool.connect();
     const stm = 'select * from files where song_id = $1';
     const pars = [song_id];
@@ -291,8 +300,9 @@ async function countSongs() {
 async function updateSong(fileinfo) {
     // normalize data before upsert
     const songdata = {
-        filepath: fileinfo.dirname, 
-        filename: fileinfo.basename,
+        basedir: fileinfo.basedir,
+        filepath: fileinfo.parentpath, 
+        filename: fileinfo.filename,
         modified: utils.maxDate(fileinfo.mtime, fileinfo.ctime), // last time when file/attributes has changed
         title: fileinfo.tags.title,
 		artist: fileinfo.tags.artist || 'UNKNOWN',
@@ -309,7 +319,7 @@ async function updateSong(fileinfo) {
     const album = await upsertAlbum(songdata.album, songdata.artist, songdata.year, songdata.genre);
     const song = await upsertSong(songdata.title, songdata.trackNumber, songdata.discNumber, album.album_id);
     logger.trace(song)
-    const file = await upsertFile(song.song_id, songdata.filepath, songdata.filename, songdata.modified);
+    const file = await upsertFile(song.song_id, songdata.basedir, songdata.filepath, songdata.filename, songdata.modified);
     if (songdata.cover) {
         await upsertCover(song.album_id, songdata.cover);
     }
@@ -333,7 +343,7 @@ async function getAlbumInfo(album_id) {
 }
 
 async function getSongInfo(song_id) {
-    const file = await getFile(song_id);
+    const file = await getSongFile(song_id);
     const song = await getSong(song_id);
     const albumdata = await getAlbumInfo(song.album_id);
 

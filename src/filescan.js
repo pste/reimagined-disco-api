@@ -4,7 +4,7 @@ const NodeID3 = require('node-id3').Promise;
 const logger = require('./logger');
 const db = require('./db');
 
-const folder = './private'; // TODO
+const folder = '/home/steo/DEV/reimagined-disco-api/private' // './private'; // TODO
 
 /* 
 SAMPLE: {
@@ -28,15 +28,14 @@ async function readid3(filepath) {
     return tags;
 }
 
-async function filedetails(filepath) {
-    const basename = path.basename(filepath);
-    const dirname = path.dirname(filepath);
-    const fullname = filepath;
-    const stats = await fs.stat(filepath);
+async function filedetails(basedir, parentpath, filename) {
+    const fullpath = path.join(basedir, parentpath, filename);
+    const stats = await fs.stat(fullpath);
     return {
-        basename,
-        dirname,
-        fullname,
+        basedir,
+        parentpath,
+        filename,
+        fullpath,
         atime: stats.atime,
         mtime: stats.mtime,
         ctime: stats.ctime,
@@ -44,7 +43,8 @@ async function filedetails(filepath) {
     };
 }
 
-function isSamePath(fsItem, dbItem) {
+function isSamePath(fsItem, dbItem) { // fullllllpath
+    const fsPath = path.join();
     if (fsItem.path === dbItem.file_path && fsItem.name === dbItem.file_name) return true;
     return false;
 }
@@ -57,9 +57,8 @@ async function fullscan() {
         flist
             .filter(f => f.isFile() && f.name.toLowerCase().endsWith('.mp3'))
             .map(async (f) => {
-                const fpath = path.join(f.path, f.name);
-                const details = await filedetails(fpath);
-                const tags = await readid3(fpath);
+                const details = await filedetails(folder, path.relative(folder, f.parentPath), f.name);
+                const tags = await readid3(details.fullpath);
                 return Object.assign(details, { tags });
             })
     )
@@ -67,15 +66,15 @@ async function fullscan() {
     //
     logger.info(`DB updating ...`);
     for await (let item of filesdisk) {
-        logger.trace(`DB UPDATE: ${item.fullname}`);
+        logger.trace(`DB UPDATE: ${item.fullpath}`);
         await db.updateSong(item);
     }
     logger.info(`DB cleaning ...`);
     const filesdb = await db.getFiles();
-    for await (let file of filesdb) {
-        if (filesdisk.findIndex(item => isSamePath(file, item)) < 0) {
-            logger.trace(file, "DB REMOVE");
-            await db.removeFile(file.song_id);
+    for await (let dbfile of filesdb) {
+        if (filesdisk.findIndex(diskfile => isSamePath(diskfile, dbfile)) < 0) {
+            logger.trace(dbfile, "DB REMOVE");
+            await db.removeFile(dbfile.song_id);
         }
     }
     await db.clearEmptyAlbums();
@@ -86,37 +85,44 @@ async function fastscan() {
     logger.info(`Start scanning on ${folder} ...`);
     // scan disk and db
     const flist = await fs.readdir(folder, { recursive: true, withFileTypes: true });
-    const filesdisk = flist.filter(f => f.isFile() && f.name.toLowerCase().endsWith('.mp3'));
+    // const filesdisk = flist.filter(f => f.isFile() && f.name.toLowerCase().endsWith('.mp3'));
+    const filesdisk = await Promise.all(
+        flist
+            .filter(f => f.isFile() && f.name.toLowerCase().endsWith('.mp3'))
+            .map(async (f) => {
+                const details = await filedetails(folder, path.relative(folder, f.parentPath), f.name);
+                return details;
+            })
+    );
     const filesdb = await db.getFiles();
     logger.info(`FastScan found ${filesdisk.length} mp3 files and ${filesdb.length} db files`);
     // scan new items
     const newitems = await Promise.all(
         filesdisk
-            .filter(file => {
-                const idx = filesdb.findIndex(item => isSamePath(file, item));
+            .filter(diskfile => {
+                const idx = filesdb.findIndex(dbfile => isSamePath(diskfile, dbfile));
                 return (idx < 0);
             })
-            .map(async (file) => {
-                const fpath = path.join(file.path, file.name);
-                const details = await filedetails(fpath);
-                const tags = await readid3(fpath);
-                return Object.assign(details, { tags });
+            .map(async (diskfile) => {
+                diskfile.tags = await readid3(diskfile.fullpath);
+                return diskfile;
             })
     );
     logger.info(`FastScan finished: found ${newitems.length} new mp3 files`);
+
     if (newitems.length > 0) {
         // works on db - update
         logger.info(`DB updating ...`);
         for await (let item of newitems) {
-            logger.trace(`DB UPDATE: ${item.fullname}`);
+            logger.trace(`DB UPDATE: ${item.fullpath}`);
             await db.updateSong(item);
         }
         // works on db - delete
         logger.info(`DB cleaning ...`);
-        for await (let file of filesdb) {
-            if (filesdisk.findIndex(item => isSamePath(file, item)) < 0) {
-                logger.trace(file, "DB REMOVE");
-                await db.removeFile(file.song_id);
+        for await (let dbfile of filesdb) {
+            if (filesdisk.findIndex(diskfile => isSamePath(diskfile, dbfile)) < 0) {
+                logger.trace(dbfile, "DB REMOVE");
+                await db.removeFile(dbfile.song_id);
             }
         }
         await db.clearEmptyAlbums();
