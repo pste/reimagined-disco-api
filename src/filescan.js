@@ -43,9 +43,10 @@ async function filedetails(basedir, parentpath, filename) {
     };
 }
 
-function isSamePath(fsItem, dbItem) { // fullllllpath
-    const fsPath = path.join();
-    if (fsItem.path === dbItem.file_path && fsItem.name === dbItem.file_name) return true;
+function isSamePath(fsItem, dbItem) {
+    const dbpath = path.join(dbItem.basedir, dbItem.file_path, dbItem.file_name);
+    const fspath = path.join(fsItem.basedir, fsItem.parentpath, fsItem.filename);
+    if (dbpath === fspath) return true;
     return false;
 }
 
@@ -57,7 +58,8 @@ async function fullscan() {
         flist
             .filter(f => f.isFile() && f.name.toLowerCase().endsWith('.mp3'))
             .map(async (f) => {
-                const details = await filedetails(folder, path.relative(folder, f.parentPath), f.name);
+                const relpath = path.relative(folder, f.parentPath);
+                const details = await filedetails(folder, relpath, f.name);
                 const tags = await readid3(details.fullpath);
                 return Object.assign(details, { tags });
             })
@@ -90,7 +92,8 @@ async function fastscan() {
         flist
             .filter(f => f.isFile() && f.name.toLowerCase().endsWith('.mp3'))
             .map(async (f) => {
-                const details = await filedetails(folder, path.relative(folder, f.parentPath), f.name);
+                const relpath = path.relative(folder, f.parentPath);
+                const details = await filedetails(folder, relpath, f.name);
                 return details;
             })
     );

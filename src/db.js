@@ -62,7 +62,6 @@ async function upsertFile(song_id, basedir, file_path, file_name, modified) {
     pars = [basedir];
     logger.trace(pars, stm);
     res = await client.query(stm, pars);
-    logger.trace(res, "==============================")
     const sources = res.rows[0]
     //
     stm = 'insert into files (source_id, song_id, file_path, file_name, modified) values ($1,$2,$3,$4,$5) \
