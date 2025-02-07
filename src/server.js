@@ -29,44 +29,46 @@ else {
 fastify.get('/', function(req, reply) {
     reply.send({ app: true });
 })
-
+/*
 fastify.get('/search/artists', async function(req, reply) {
     const name = req?.query?.name || '';
+    logger.trace(`/search/artists ${name}`);
+    //
     const data = await db.getArtists(name);
+    await reply.send(data);
+})*/
+
+fastify.get('/collection', async function(req, reply) {
+    logger.trace(`/collection`);
+    // 
+    const data = await db.getCollection();
     await reply.send(data);
 })
 
 fastify.get('/search/albums', async function(req, reply) {
     const title = req?.query?.title || '';
     const artistid = req?.query?.artistid;
-    // get a list of albums
-    let albums = [];
-    if (artistid) {
-        albums = await db.getAlbumsByArtist(artistid);
-    }
-    else { //default to this
-        albums = await db.getAlbumsByTitle(title);
-    }
-    // normalize output
-    const data = await Promise.all(
-        albums.map( async (album) => {
-            return await db.getAlbumInfo(album.album_id);
-        })
-    );
+    logger.trace(`/search/albums ${title} ${artistid}`);
+    // 
+    const data = await db.getAlbums({ artistid, title });
     await reply.send(data);
 })
-
+/*
 fastify.get('/search/songs', async function(req, reply) {
     const title = req?.query?.title || '';
+    logger.trace(`/search/songs ${title}`);
+    //
     const data = await db.getSongs(title);
     await reply.send(data);
 })
 
 fastify.get('/search/song', async function(req, reply) {
     const id = req.query.id;
+    logger.trace(`/search/song ${id}`);
+    //
     const data = await db.getSongInfo(id);
     await reply.send(data);
-})
+})*/
 
 module.exports.run = () => {
     fastify.listen( { port: process.env.PORT, host: '0.0.0.0' }, function(err) {
