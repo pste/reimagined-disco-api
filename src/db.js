@@ -1,3 +1,4 @@
+const path = require('path');
 const artists = require('./dbmodels/artists');
 const albums = require('./dbmodels/albums');
 const songs = require('./dbmodels/songs');
@@ -45,9 +46,11 @@ async function getAlbums(params) {
     // get a list of albums
     let data = [];
     if (params.artistid) {
+        logger.trace('getAlbumsByArtist');
         data = await albums.getAlbumsByArtist(params.artistid);
     }
     else { //default to this
+        logger.trace('getAlbumsByTitle');
         data = await albums.getAlbumsByTitle(params.title);
     }
     // normalize output
@@ -60,8 +63,8 @@ async function getAlbums(params) {
 }
 
 // album page
-async function getSongs() {
-    return await songs.getSongs();
+async function getSongs(params) {
+    return await songs.getSongs(params);
 }
 
 // song details page
@@ -72,8 +75,10 @@ async function getSongInfo(song_id) {
 
     const data = {
         song_id,
+        sourcepath: file.source_path,
         filepath: file.file_path, 
         filename: file.file_name,
+        fullpath: path.join(file.source_path, file.file_path, file.file_name),
         modified: file.modified,
         title: song.title,
 		trackNumber: song.track_nr,

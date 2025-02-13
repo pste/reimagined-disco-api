@@ -1,10 +1,14 @@
 const logger = require('../logger');
 const pool = require('./dbpool');
 
-async function getSongs(title) {
+async function getSongs(params) {
     const client = await pool.connect();
     let stm, pars;
-    if (title) {
+    if (params.albumid) {
+        stm = 'select * from songs where album_id = $1';
+        pars = [params.albumid];
+    }
+    else if (params.title) {
         stm = 'select * from songs where title ilike $1';
         pars = [`%${title}%`];
     }
@@ -34,7 +38,7 @@ async function getSong(song_id) {
 
 async function getSongFile(song_id) {
     const client = await pool.connect();
-    const stm = 'select * from files where song_id = $1';
+    const stm = 'select so.path as source_path,fi.* from files fi join sources so on fi.source_id=so.source_id where fi.song_id = $1';
     const pars = [song_id];
     logger.trace(pars, stm);
     const res = await client.query(stm, pars);

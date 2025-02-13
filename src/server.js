@@ -1,5 +1,6 @@
 const logger = require('./logger');
 const db = require('./db');
+const fs = require('fs');
 
 // =============== FASTIFY =============== //
 
@@ -40,7 +41,6 @@ fastify.get('/search/artists', async function(req, reply) {
 
 fastify.get('/collection', async function(req, reply) {
     logger.trace(`/collection`);
-    // 
     const data = await db.getCollection();
     await reply.send(data);
 })
@@ -48,20 +48,29 @@ fastify.get('/collection', async function(req, reply) {
 fastify.get('/search/albums', async function(req, reply) {
     const title = req?.query?.title || '';
     const artistid = req?.query?.artistid;
-    logger.trace(`/search/albums ${title} ${artistid}`);
-    // 
-    const data = await db.getAlbums({ artistid, title });
-    await reply.send(data);
-})
-/*
-fastify.get('/search/songs', async function(req, reply) {
-    const title = req?.query?.title || '';
-    logger.trace(`/search/songs ${title}`);
-    //
-    const data = await db.getSongs(title);
+    logger.trace(`/search/albums [${title}|${artistid}]`);
+    const data = await db.getAlbums({ title, artistid });
     await reply.send(data);
 })
 
+fastify.get('/search/songs', async function(req, reply) {
+    const albumid = req?.query?.albumid;
+    const title = req?.query?.title || '';
+    logger.trace(`/search/songs [${albumid}|${title}]`);
+    //
+    const data = await db.getSongs({albumid, title});
+    await reply.send(data);
+})
+
+fastify.get('/song', async function(req, reply) {
+    const songid = req?.query?.id;
+    const song = await db.getSongInfo(songid);
+    logger.trace("Streaming " + song.fullpath)
+    const stream = fs.createReadStream(song.fullpath); //, { start, end });
+    return Promise.resolve(stream);
+})
+
+/*
 fastify.get('/search/song', async function(req, reply) {
     const id = req.query.id;
     logger.trace(`/search/song ${id}`);
