@@ -45,6 +45,10 @@ async function getCollection() {
 async function getAlbums(params) {
     // get a list of albums
     let data = [];
+    if (params.albumid) {
+        logger.trace('getAlbum');
+        data = [{album_id: params.albumid}]; // prepare a fake aray of albums; no db needed
+    }
     if (params.artistid) {
         logger.trace('getAlbumsByArtist');
         data = await albums.getAlbumsByArtist(params.artistid);
