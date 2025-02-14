@@ -1,6 +1,7 @@
 const logger = require('./logger');
 const db = require('./db');
-const fs = require('fs');
+const streamer = require('./streamer');
+const fastifyRange = require('fastify-range');
 
 // =============== FASTIFY =============== //
 
@@ -24,6 +25,8 @@ else {
     const keys = new Set([process.env.BEARER_TOKEN]);
     fastify.register(bearerAuthPlugin, {keys});
 }
+
+fastify.register(fastifyRange, { throwOnInvalid: true });
 
 // =============== ROUTES =============== //
 
@@ -62,12 +65,15 @@ fastify.get('/search/songs', async function(req, reply) {
     await reply.send(data);
 })
 
-fastify.get('/song', async function(req, reply) {
+fastify.get('/stream/song', async function(req, reply) {
     const songid = req?.query?.id;
     const song = await db.getSongInfo(songid);
-    logger.trace("Streaming " + song.fullpath)
-    const stream = fs.createReadStream(song.fullpath); //, { start, end });
-    return Promise.resolve(stream);
+    logger.trace("Streaming " + song.fullpath);
+    //
+    return streamer.streamFile(req, reply, song.fullpath);
+    //
+    //const stream = fs.createReadStream(song.fullpath); //, { start, end });
+    //return Promise.resolve(stream);
 })
 
 /*
