@@ -71,9 +71,6 @@ fastify.get('/stream/song', async function(req, reply) {
     logger.trace("Streaming " + song.fullpath);
     //
     return streamer.streamFile(req, reply, song.fullpath);
-    //
-    //const stream = fs.createReadStream(song.fullpath); //, { start, end });
-    //return Promise.resolve(stream);
 })
 
 /*

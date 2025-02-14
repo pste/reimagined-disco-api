@@ -32,6 +32,7 @@ function streamFile( request, reply, filepath ) {
     reply.code(206);
     reply.type('audio/mpeg');
     const stream = fs.createReadStream(filepath, { start, end });
+    return stream;
 }
 
 module.exports = {
