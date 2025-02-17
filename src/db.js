@@ -3,9 +3,11 @@ const artists = require('./dbmodels/artists');
 const albums = require('./dbmodels/albums');
 const songs = require('./dbmodels/songs');
 const files = require('./dbmodels/files');
+const sources = require('./dbmodels/sources');
 
 const logger = require('./logger');
 const utils = require('./utils');
+const { getSources } = require('./dbmodels/sources');
 
 /////////////////////////////////////////////////////////////////
 
@@ -155,6 +157,7 @@ async function clearEmptyAlbums() {
 module.exports = {
     // web
     getCollection,
+    getSources: sources.getSources,
    // getArtists,
     getAlbums,
     getSongs,
