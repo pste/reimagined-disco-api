@@ -32,6 +32,11 @@ async function _getAlbumInfo(album_id) {
 // library page
 async function getCollection() {
     let data = [];
+    data = await albums.getCollection();
+    return data;
+}
+async function getCollectionOrig() {
+    let data = [];
     data = await artists.getArtists();
     data = await Promise.all(
         data.map( async(el) => {
@@ -43,13 +48,19 @@ async function getCollection() {
     return data;
 }
 
+async function getCover(album_id) {
+    let data = [];
+    data = await albums.getCover(album_id);
+    return data;
+}
+
 // artist page
 async function getAlbums(params) {
     // get a list of albums
     let data = [];
     if (params.albumid) {
         logger.trace('getAlbum');
-        data = [{album_id: params.albumid}]; // prepare a fake aray of albums; no db needed
+        data = [{album_id: params.albumid}]; // prepare a fake array of albums; no db needed
     }
     if (params.artistid) {
         logger.trace('getAlbumsByArtist');
@@ -158,6 +169,7 @@ module.exports = {
     // web
     getCollection,
     getSources: sources.getSources,
+    getCover,
    // getArtists,
     getAlbums,
     getSongs,

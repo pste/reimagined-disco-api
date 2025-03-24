@@ -1,6 +1,19 @@
 const logger = require('../logger');
 const pool = require('./dbpool');
 
+async function getCollection() {
+    const client = await pool.connect();
+    const stm = 'select al.*, ar.name \
+                    from albums al \
+                    join artists ar on al.artist_id = ar.artist_id';
+    const pars = [];
+    logger.trace(pars, stm);
+    const res = await client.query(stm, pars);
+    const rows = res.rows;
+    logger.trace(` ==> ${rows.length}`)
+    client.release();
+    return rows;
+}
 async function getAlbumsByTitle(title) {
     const client = await pool.connect();
     let stm, pars;
@@ -128,6 +141,7 @@ async function clearEmptyAlbums() {
 }
 
 module.exports = {
+    getCollection,
     getAlbumsByTitle,
     getAlbumsByArtist,
     getAlbum,

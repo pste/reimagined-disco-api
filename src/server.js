@@ -48,6 +48,13 @@ fastify.get('/collection', async function(req, reply) {
     await reply.send(data);
 })
 
+fastify.get('/search/cover', async function(req, reply) {
+    const album_id = req?.query?.album_id;
+    logger.trace(`/search/cover [${album_id}]`);
+    const data = await db.getCover(album_id);
+    await reply.send(data);
+})
+
 fastify.get('/sources', async function(req, reply) {
     logger.trace(`/sources`);
     const data = await db.getSources();
