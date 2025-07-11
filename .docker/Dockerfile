@@ -1,8 +1,8 @@
-FROM node:20-alpine
+FROM node:24-alpine
 
 # SETUP npm
 RUN npm config set engine-strict true
-RUN npm install -g npm@9
+RUN npm install -g npm@latest
 
 # INSTALL PACKAGES
 WORKDIR /app
