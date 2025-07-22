@@ -4,7 +4,16 @@ const NodeID3 = require('node-id3').Promise;
 const logger = require('./logger');
 const db = require('./db');
 
-const folder = '/home/steo/DEV/reimagined-disco-api/private' // './private'; // TODO
+//
+async function getBaseFolder() {
+    const sources = await db.getSources();
+    let basedir = '/home/steo/DEV/reimagined-disco-api/private'; // './private'; // TODO
+    if (sources.length > 0) {
+        basedir = sources[0].path; // TODO reading the 1st one ?
+    }
+    logger.info(`Obtaining base folder: ${basedir} ...`)
+    return basedir;
+}
 
 /* 
 SAMPLE: {
@@ -51,6 +60,7 @@ function isSamePath(fsItem, dbItem) {
 }
 
 async function fullscan() {
+    const folder = await getBaseFolder();
     logger.info(`Start scanning on ${folder} ...`);
     //
     const flist = await fs.readdir(folder, { recursive: true, withFileTypes: true });
@@ -84,6 +94,7 @@ async function fullscan() {
 }
 
 async function fastscan() {
+    const folder = await getBaseFolder();
     logger.info(`Start scanning on ${folder} ...`);
     // scan disk and db
     const flist = await fs.readdir(folder, { recursive: true, withFileTypes: true });
