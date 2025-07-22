@@ -105,7 +105,7 @@ async function fastscan() {
     //
     const filesdisk = [];
     for await (const f of flist) {
-        if (f => f.isFile() && f.name.toLowerCase().endsWith('.mp3')) {
+        if (f.isFile() && f.name.toLowerCase().endsWith('.mp3')) {
             const relpath = path.relative(folder, f.parentPath);
             const details = await filedetails(folder, relpath, f.name);
             filesdisk.push(details);
@@ -115,17 +115,14 @@ async function fastscan() {
     const filesdb = await db.getFiles();
     logger.info(`FastScan found ${filesdb.length} db files`);
     // scan new items
-    const newitems = await Promise.all(
-        filesdisk
-            .filter(diskfile => {
-                const idx = filesdb.findIndex(dbfile => isSamePath(diskfile, dbfile));
-                return (idx < 0);
-            })
-            .map(async (diskfile) => {
-                diskfile.tags = await readid3(diskfile.fullpath);
-                return diskfile;
-            })
-    );
+    const newitems = [];
+    for await (const diskfile of filesdisk) {
+        const idx = filesdb.findIndex(dbfile => isSamePath(diskfile, dbfile));
+        if (idx < 0) {
+            diskfile.tags = await readid3(diskfile.fullpath);
+            newitems.push(diskfile);
+        }
+    }
     logger.info(`FastScan finished: found ${newitems.length} new mp3 files`);
 
     if (newitems.length > 0) {
