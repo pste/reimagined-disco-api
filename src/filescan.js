@@ -101,7 +101,7 @@ async function fastscan() {
     // scan disk and db
     const flist = await fs.readdir(folder, { recursive: true, withFileTypes: true });
     // const filesdisk = flist.filter(f => f.isFile() && f.name.toLowerCase().endsWith('.mp3'));
-    logger.info(`FastScan found ${filesdisk.length} mp3 files`);
+    logger.info(`FastScan found ${flist.length} files`);
     const filesdisk = await Promise.all(
         flist
             .filter(f => f.isFile() && f.name.toLowerCase().endsWith('.mp3'))
@@ -111,6 +111,7 @@ async function fastscan() {
                 return details;
             })
     );
+    logger.info(`FastScan found ${filesdisk.length} mp3 files`);
     const filesdb = await db.getFiles();
     logger.info(`FastScan found ${filesdb.length} db files`);
     // scan new items
