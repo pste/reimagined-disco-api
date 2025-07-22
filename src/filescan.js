@@ -102,15 +102,15 @@ async function fastscan() {
     const flist = await fs.readdir(folder, { recursive: true, withFileTypes: true });
     // const filesdisk = flist.filter(f => f.isFile() && f.name.toLowerCase().endsWith('.mp3'));
     logger.info(`FastScan found ${flist.length} files`);
-    const filesdisk = await Promise.all(
-        flist
-            .filter(f => f.isFile() && f.name.toLowerCase().endsWith('.mp3'))
-            .map(async (f) => {
-                const relpath = path.relative(folder, f.parentPath);
-                const details = await filedetails(folder, relpath, f.name);
-                return details;
-            })
-    );
+    //
+    const filesdisk = [];
+    for await (const f of flist) {
+        if (f => f.isFile() && f.name.toLowerCase().endsWith('.mp3')) {
+            const relpath = path.relative(folder, f.parentPath);
+            const details = await filedetails(folder, relpath, f.name);
+            filesdisk.push(details);
+        }
+    }
     logger.info(`FastScan found ${filesdisk.length} mp3 files`);
     const filesdb = await db.getFiles();
     logger.info(`FastScan found ${filesdb.length} db files`);
