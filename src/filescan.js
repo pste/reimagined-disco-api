@@ -34,7 +34,13 @@ async function readid3(filepath) {
        // exclude: ['APIC'] // image
     };
     logger.trace(`ID3 for ${filepath} ...`)
-    const tags = await NodeID3.read(filepath, options);
+    let tags = {}
+    try {
+        tags = await NodeID3.read(filepath, options);
+    }
+    catch(err) {
+        logger.error(err);
+    }
     return tags;
 }
 
