@@ -1,4 +1,5 @@
 const logger = require('../logger');
+const artists = require('./artists');
 const pool = require('./dbpool');
 
 async function getCollection() {
