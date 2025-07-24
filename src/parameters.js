@@ -19,7 +19,7 @@ async function scanJobDefinition() {
 }
 
 //
-module.export = {
+module.exports = {
     baseDir,
     scanJobDefinition
 }
