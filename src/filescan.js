@@ -1,19 +1,10 @@
 const fs = require('node:fs/promises');
 const path = require('path');
 const NodeID3 = require('node-id3').Promise;
+const cron = require('node-cron');
 const logger = require('./logger');
 const db = require('./db');
-
-//
-async function getBaseFolder() {
-    const sources = await db.getSources();
-    let basedir = '/home/steo/DEV/reimagined-disco-api/private'; // './private'; // TODO
-    if (sources.length > 0) {
-        basedir = sources[0].path; // TODO reading the 1st one ?
-    }
-    logger.info(`Obtaining base folder: ${basedir} ...`)
-    return basedir;
-}
+const params = require('./parameters');
 
 /* 
 SAMPLE: {
@@ -27,6 +18,11 @@ SAMPLE: {
     "image" : ""            // APIC
 }
 */
+/**
+ * Reads ID3 info from an MP3 file. It returns: album, artist, title, year, genre, trackNumber, partOfSet, image.
+ * @param {*} filepath - The path of the mp3 file 
+ * @returns An object with the ID3 info
+ */
 async function readid3(filepath) {
     const options = {
         noRaw: true,
@@ -44,6 +40,13 @@ async function readid3(filepath) {
     return tags;
 }
 
+/**
+ * Resolves the info for a file on the disk
+ * @param {*} basedir - The root of the scan
+ * @param {*} parentpath - The directory that contains the file
+ * @param {*} filename - The file name
+ * @returns A JSON with all the file info
+ */
 async function filedetails(basedir, parentpath, filename) {
     const fullpath = path.join(basedir, parentpath, filename);
     logger.trace(`Filedetails for ${fullpath} ...`)
@@ -59,56 +62,34 @@ async function filedetails(basedir, parentpath, filename) {
         birthtime: stats.birthtime,
     };
 }
-
-function isSamePath(fsItem, dbItem) {
+/**
+ * This function check if the filesystem item and the database item are the same. 
+ * Comparison is made just checking the relative path. It can be improved using atime, ctime, mtime, size properties (TODO)
+ * @param {*} fsItem - a file on the disk
+ * @param {*} dbItem - a file saved on the db
+ * @returns bool
+ */
+function isSameFile(fsItem, dbItem) {
     const dbpath = path.join(dbItem.basedir, dbItem.file_path, dbItem.file_name);
     const fspath = path.join(fsItem.basedir, fsItem.parentpath, fsItem.filename);
     if (dbpath === fspath) return true;
     return false;
 }
 
-async function fullscan() {
-    const folder = await getBaseFolder();
+/**
+ * This function at first reads all of the files in the given folder and, for each file found, get its properties (atime, ctime, ...)
+ * In a second step it gets all the "saved on DB" files.
+ * Finally it compares the two lists: what is missing on the DB is added, what is changed is updated and what is missing
+ * from filesystem is removed.
+ * @param {*} forceFullScan - This disable the file check: every file on disk will be read and upserted
+ */
+async function fastscan( forceFullScan ) {
+    const folder = await params.baseDir();
     logger.info(`Start scanning on ${folder} ...`);
-    //
+    // scan disk
     const flist = await fs.readdir(folder, { recursive: true, withFileTypes: true });
-    const filesdisk = await Promise.all(
-        flist
-            .filter(f => f.isFile() && f.name.toLowerCase().endsWith('.mp3'))
-            .map(async (f) => {
-                const relpath = path.relative(folder, f.parentPath);
-                const details = await filedetails(folder, relpath, f.name);
-                const tags = await readid3(details.fullpath);
-                return Object.assign(details, { tags });
-            })
-    )
-    logger.info(`Scan finished: found ${filesdisk.length} mp3 files`);
-    //
-    logger.info(`DB updating ...`);
-    for await (let item of filesdisk) {
-        logger.trace(`DB UPDATE: ${item.fullpath}`);
-        await db.updateSong(item);
-    }
-    logger.info(`DB cleaning ...`);
-    const filesdb = await db.getFiles();
-    for await (let dbfile of filesdb) {
-        if (filesdisk.findIndex(diskfile => isSamePath(diskfile, dbfile)) < 0) {
-            logger.trace(dbfile, "DB REMOVE");
-            await db.removeFile(dbfile.song_id);
-        }
-    }
-    await db.clearEmptyAlbums();
-    logger.info(`DB done!`);
-}
-
-async function fastscan() {
-    const folder = await getBaseFolder();
-    logger.info(`Start scanning on ${folder} ...`);
-    // scan disk and db
-    const flist = await fs.readdir(folder, { recursive: true, withFileTypes: true });
-    // const filesdisk = flist.filter(f => f.isFile() && f.name.toLowerCase().endsWith('.mp3'));
     logger.info(`FastScan found ${flist.length} files`);
-    //
+    // resolve files info
     const filesdisk = [];
     for await (const f of flist) {
         if (f.isFile() && f.name.toLowerCase().endsWith('.mp3')) {
@@ -118,19 +99,20 @@ async function fastscan() {
         }
     }
     logger.info(`FastScan found ${filesdisk.length} mp3 files`);
+    // scan db
+    logger.info(`Start scanning on db ...`);
     const filesdb = await db.getFiles();
     logger.info(`FastScan found ${filesdb.length} db files`);
     // scan new items
     const newitems = [];
     for await (const diskfile of filesdisk) {
-        const idx = filesdb.findIndex(dbfile => isSamePath(diskfile, dbfile));
-        if (idx < 0) {
+        const idx = filesdb.findIndex(dbfile => isSameFile(diskfile, dbfile));
+        if (forceFullScan === true || idx < 0) {
             diskfile.tags = await readid3(diskfile.fullpath);
             newitems.push(diskfile);
         }
     }
     logger.info(`FastScan finished: found ${newitems.length} new mp3 files`);
-
     if (newitems.length > 0) {
         // works on db - update
         logger.info(`DB updating ...`);
@@ -138,22 +120,34 @@ async function fastscan() {
             logger.trace(`DB UPDATE: ${item.fullpath}`);
             await db.updateSong(item);
         }
-        // works on db - delete
-        logger.info(`DB cleaning ...`);
-        for await (let dbfile of filesdb) {
-            if (filesdisk.findIndex(diskfile => isSamePath(diskfile, dbfile)) < 0) {
-                logger.trace(dbfile, "DB REMOVE");
-                await db.removeFile(dbfile.song_id);
-            }
-        }
-        await db.clearEmptyAlbums();
     }
+    // scan removed items
+    logger.info(`DB cleaning ...`);
+    for await (let dbfile of filesdb) {
+        // works on db - delete
+        if (filesdisk.findIndex(diskfile => isSameFile(diskfile, dbfile)) < 0) {
+            logger.trace(dbfile, "DB REMOVE");
+            await db.removeFile(dbfile.song_id);
+        }
+    }
+    await db.clearEmptyAlbums();
+    //
     logger.info(`DB done!`);
+}
+
+/**
+ * Install a cronjob that updates the library. 
+ * The job definition is a parameter on the DB.
+ */
+async function installJob() {
+    const job = await params.scanJobDefinition();
+    logger.info(`Install scan job on ${job}`);
+    cron.schedule(job, fastscan);
 }
 
 /////////////////////////////////////////////////////////////////
 
 module.exports = {
-    fullscan,
     fastscan,
+    installJob,
 }
