@@ -84,9 +84,10 @@ function isSameFile(fsItem, dbItem) {
  * @param {*} forceFullScan - This disable the file check: every file on disk will be read and upserted
  */
 async function fastscan( forceFullScan ) {
+    // scan disk
     const folder = await params.baseDir();
     logger.info(`Start scanning on ${folder} ...`);
-    // scan disk
+    // get files list    
     const flist = await fs.readdir(folder, { recursive: true, withFileTypes: true });
     logger.info(`FastScan found ${flist.length} files`);
     // resolve files info
@@ -99,28 +100,25 @@ async function fastscan( forceFullScan ) {
         }
     }
     logger.info(`FastScan found ${filesdisk.length} mp3 files`);
+    
     // scan db
     logger.info(`Start scanning on db ...`);
     const filesdb = await db.getFiles();
     logger.info(`FastScan found ${filesdb.length} db files`);
-    // scan new items
-    const newitems = [];
+
+    // upsert new items
+    logger.info(`DB updating ...`);
     for await (const diskfile of filesdisk) {
+        // check if is new
         const idx = filesdb.findIndex(dbfile => isSameFile(diskfile, dbfile));
         if (forceFullScan === true || idx < 0) {
             diskfile.tags = await readid3(diskfile.fullpath);
-            newitems.push(diskfile);
+            // works on db - update
+            logger.trace(`DB UPDATE: ${diskfile.fullpath}`);
+            await db.updateSong(diskfile);
         }
     }
-    logger.info(`FastScan finished: found ${newitems.length} new mp3 files`);
-    if (newitems.length > 0) {
-        // works on db - update
-        logger.info(`DB updating ...`);
-        for await (let item of newitems) {
-            logger.trace(`DB UPDATE: ${item.fullpath}`);
-            await db.updateSong(item);
-        }
-    }
+
     // scan removed items
     logger.info(`DB cleaning ...`);
     for await (let dbfile of filesdb) {
