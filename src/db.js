@@ -140,7 +140,7 @@ async function updateSong(fileinfo) {
         title: fileinfo.tags.title,
 		artist: fileinfo.tags.artist || 'UNKNOWN',
 		album: fileinfo.tags.album || 'UNKNOWN',
-		year: utils.parseNumber(fileinfo.tags.year),
+		year: utils.parseNumber(fileinfo.tags.year) || 1900,
 		genre: fileinfo.tags.genre || 'UNKNOWN',
 		trackNumber: utils.parseNumber(fileinfo.tags.trackNumber) || 0,
 		discNumber: utils.parseAlbumNumber(fileinfo.tags.partOfSet),
