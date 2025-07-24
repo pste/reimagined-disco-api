@@ -4,6 +4,7 @@ const albums = require('./dbmodels/albums');
 const songs = require('./dbmodels/songs');
 const files = require('./dbmodels/files');
 const sources = require('./dbmodels/sources');
+const pars = require('./dbmodels/parameters');
 
 const logger = require('./logger');
 const utils = require('./utils');
@@ -164,7 +165,13 @@ async function clearEmptyAlbums() {
 }
 
 /////////////////////////////////////////////////////////////////
+// 
 
+async function getParameters() {
+    return await pars.getParameters();
+}
+
+/////////////////////////////////////////////////////////////////
 module.exports = {
     // web
     getCollection,
@@ -180,4 +187,6 @@ module.exports = {
     removeFile,
     updateSong,
     clearEmptyAlbums,
+    // generic:
+    getParameters,
 }

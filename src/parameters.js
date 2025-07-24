@@ -14,8 +14,11 @@ async function baseDir() {
 
 //
 async function scanJobDefinition() {
-    // TODO on DB
-    return '0 23 * * 1,5'; // At 23:00 on Monday and Friday.
+    const pars = await db.getParameters();
+    if (pars.length > 0) {
+        return pars[0].cronScan;
+    }
+    return '0 23 * * 1,5'; // some default: at 23:00 on Monday and Friday.
 }
 
 //
