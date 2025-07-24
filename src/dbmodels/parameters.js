@@ -13,6 +13,7 @@ async function getParameters() {
     return rows;
 }
 
+//
 module.exports = {
     getParameters,
 }

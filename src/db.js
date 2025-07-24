@@ -132,18 +132,19 @@ async function removeFile() {
 // filescan 
 async function updateSong(fileinfo) {
     // normalize data before upsert
+    const UNKNOWN = 'UNKNOWN';
     const songdata = {
         basedir: fileinfo.basedir,
         filepath: fileinfo.parentpath, 
         filename: fileinfo.filename,
         modified: utils.maxDate(fileinfo.mtime, fileinfo.ctime), // last time when file/attributes has changed
-        title: fileinfo.tags.title,
-		artist: fileinfo.tags.artist || 'UNKNOWN',
-		album: fileinfo.tags.album || 'UNKNOWN',
-		year: utils.parseNumber(fileinfo.tags.year) || 1900,
-		genre: fileinfo.tags.genre || 'UNKNOWN',
-		trackNumber: utils.parseNumber(fileinfo.tags.trackNumber) || 0,
-		discNumber: utils.parseAlbumNumber(fileinfo.tags.partOfSet),
+        title: fileinfo.tags.title                                  || UNKNOWN,
+		artist: fileinfo.tags.artist                                || UNKNOWN,
+		album: fileinfo.tags.album                                  || UNKNOWN,
+		year: utils.parseNumber(fileinfo.tags.year)                 || 1900,
+		genre: fileinfo.tags.genre                                  || UNKNOWN,
+		trackNumber: utils.parseNumber(fileinfo.tags.trackNumber)   || 0,
+		discNumber: utils.parseAlbumNumber(fileinfo.tags.partOfSet) || 1,
         cover: fileinfo.tags?.image?.imageBuffer // .data ?
     }
     if (songdata.artist === 'UNKNOWN') {
