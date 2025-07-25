@@ -16,6 +16,7 @@ async function getParameters() {
     }
     catch(err) {
         dblog.createLog('ERROR DB getParameters', err);
+        throw err;
     }
 }
 

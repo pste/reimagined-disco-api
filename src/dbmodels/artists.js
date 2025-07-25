@@ -23,6 +23,7 @@ async function getArtists(name) {
     }
     catch(err) {
         dblog.createLog('ERROR DB getArtists', err);
+        throw err;
     }
 }
 
@@ -40,6 +41,7 @@ async function getArtist(artist_id) {
     }
     catch(err) {
         dblog.createLog('ERROR DB getArtist', err);
+        throw err;
     }
 }
 
@@ -61,6 +63,7 @@ async function getCover(artist_id) {
     }
     catch(err) {
         dblog.createLog('ERROR DB getCover', err);
+        throw err;
     }
 }
 
@@ -80,6 +83,7 @@ async function upsertArtist(artist) {
     }
     catch(err) {
         dblog.createLog('ERROR DB upsertArtist', err);
+        throw err;
     }
 }
 
@@ -97,6 +101,7 @@ async function countArtists() {
     }
     catch(err) {
         dblog.createLog('ERROR DB countArtists', err);
+        throw err;
     }
 }
 

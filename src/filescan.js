@@ -84,53 +84,59 @@ function isSameFile(fsItem, dbItem) {
  * @param {*} forceFullScan - This disable the file check: every file on disk will be read and upserted
  */
 async function fastscan( forceFullScan ) {
-    // scan disk
-    const folder = await params.baseDir();
-    logger.info(`Start scanning on ${folder} ...`);
-    // get files list    
-    const flist = await fs.readdir(folder, { recursive: true, withFileTypes: true });
-    logger.info(`FastScan found ${flist.length} files`);
-    // resolve files info
-    const filesdisk = [];
-    for await (const f of flist) {
-        if (f.isFile() && f.name.toLowerCase().endsWith('.mp3')) {
-            const relpath = path.relative(folder, f.parentPath);
-            const details = await filedetails(folder, relpath, f.name);
-            filesdisk.push(details);
+    try {
+        // scan disk
+        const folder = await params.baseDir();
+        logger.info(`Start scanning on ${folder} ...`);
+        // get files list    
+        const flist = await fs.readdir(folder, { recursive: true, withFileTypes: true });
+        logger.info(`FastScan found ${flist.length} files`);
+        // resolve files info
+        const filesdisk = [];
+        for await (const f of flist) {
+            if (f.isFile() && f.name.toLowerCase().endsWith('.mp3')) {
+                const relpath = path.relative(folder, f.parentPath);
+                const details = await filedetails(folder, relpath, f.name);
+                filesdisk.push(details);
+            }
         }
-    }
-    logger.info(`FastScan found ${filesdisk.length} mp3 files`);
+        logger.info(`FastScan found ${filesdisk.length} mp3 files`);
     
-    // scan db
-    logger.info(`Start scanning on db ...`);
-    const filesdb = await db.getFiles();
-    logger.info(`FastScan found ${filesdb.length} db files`);
+        // scan db
+        logger.info(`Start scanning on db ...`);
+        const filesdb = await db.getFiles();
+        logger.info(`FastScan found ${filesdb.length} db files`);
 
-    // upsert new items
-    logger.info(`DB updating ...`);
-    for await (const diskfile of filesdisk) {
-        // check if is new
-        const idx = filesdb.findIndex(dbfile => isSameFile(diskfile, dbfile));
-        if (forceFullScan === true || idx < 0) {
-            diskfile.tags = await readid3(diskfile.fullpath);
-            // works on db - update
-            logger.trace(`DB UPDATE: ${diskfile.fullpath}`);
-            await db.updateSong(diskfile);
+        // upsert new items
+        logger.info(`DB updating ...`);
+        for await (const diskfile of filesdisk) {
+            // check if is new
+            const idx = filesdb.findIndex(dbfile => isSameFile(diskfile, dbfile));
+            if (forceFullScan === true || idx < 0) {
+                diskfile.tags = await readid3(diskfile.fullpath);
+                // works on db - update
+                logger.trace(`DB UPDATE: ${diskfile.fullpath}`);
+                await db.updateSong(diskfile);
+            }
         }
-    }
 
-    // scan removed items
-    logger.info(`DB cleaning ...`);
-    for await (let dbfile of filesdb) {
-        // works on db - delete
-        if (filesdisk.findIndex(diskfile => isSameFile(diskfile, dbfile)) < 0) {
-            logger.trace(dbfile, "DB REMOVE");
-            await db.removeFile(dbfile.song_id);
+        // scan removed items
+        logger.info(`DB cleaning ...`);
+        for await (let dbfile of filesdb) {
+            // works on db - delete
+            if (filesdisk.findIndex(diskfile => isSameFile(diskfile, dbfile)) < 0) {
+                logger.trace(dbfile, "DB REMOVE");
+                await db.removeFile(dbfile.song_id);
+            }
         }
+        await db.clearEmptyAlbums();
+        //
+        logger.info(`DB done!`);
     }
-    await db.clearEmptyAlbums();
-    //
-    logger.info(`DB done!`);
+    catch(err) {
+        logger.error(err);
+        // DO NOT THROW
+    }
 }
 
 /**

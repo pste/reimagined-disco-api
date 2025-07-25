@@ -27,6 +27,7 @@ async function getSongs(params) {
     }
     catch(err) {
         dblog.createLog('ERROR DB getSongs', err);
+        throw err;
     }
 }
 
@@ -44,6 +45,7 @@ async function getSong(song_id) {
     }
     catch(err) {
         dblog.createLog('ERROR DB getSong', err);
+        throw err;
     }
 }
 
@@ -61,6 +63,7 @@ async function getSongFile(song_id) {
     }
     catch(err) {
         dblog.createLog('ERROR DB getSongFile', err);
+        throw err;
     }
 }
 
@@ -80,6 +83,7 @@ async function upsertSong(title, tracknr, discnr, album_id) {
     }
     catch(err) {
         dblog.createLog('ERROR DB upsertSong', err);
+        throw err;
     }
 }
 
@@ -97,6 +101,7 @@ async function countSongs() {
     }
     catch(err) {
         dblog.createLog('ERROR DB countSongs', err);
+        throw err;
     }
 }
 

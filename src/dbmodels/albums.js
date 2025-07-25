@@ -19,6 +19,7 @@ async function getCollection() {
     }
     catch(err) {
         dblog.createLog('ERROR DB getCollection', err);
+        throw err;
     }
 }
 
@@ -43,6 +44,7 @@ async function getAlbumsByTitle(title) {
     }
     catch(err) {
         dblog.createLog('ERROR DB getAlbumsByTitle', err);
+        throw err;
     }
 }
 
@@ -60,6 +62,7 @@ async function getAlbumsByArtist(artist_id) {
     }
     catch(err) {
         dblog.createLog('ERROR DB getAlbumsByArtist', err);
+        throw err;
     }
 }
 
@@ -77,6 +80,7 @@ async function getAlbum(album_id) {
     }
     catch(err) {
         dblog.createLog('ERROR DB getAlbum', err);
+        throw err;
     }
 }
 
@@ -94,6 +98,7 @@ async function countAlbums() {
     }
     catch(err) {
         dblog.createLog('ERROR DB countAlbums', err);
+        throw err;
     }
 }
 
@@ -115,6 +120,7 @@ async function upsertAlbum(title, artistName, year, genre) {
     }
     catch(err) {
         dblog.createLog('ERROR DB upsertAlbum', err);
+        throw err;
     }
 }
 
@@ -137,6 +143,7 @@ async function getCover(album_id) {
     }
     catch(err) {
         dblog.createLog('ERROR DB getCover', err);
+        throw err;
     }
 }
 
@@ -157,6 +164,7 @@ async function upsertCover(album_id, image_buffer) {
     }
     catch(err) {
         dblog.createLog('ERROR DB upsertCover', err);
+        throw err;
     }
 }
 
@@ -185,6 +193,7 @@ async function clearEmptyAlbums() {
     }
     catch(err) {
         dblog.createLog('ERROR DB clearEmptyAlbums', err);
+        throw err;
     }
 }
 

@@ -3,9 +3,9 @@ const logger = require('./logger');
 
 function streamFile( request, reply, filepath ) {
     const audioSize = fs.statSync(filepath).size;
-    logger.info("Requested size:" + audioSize);
+    logger.info("STREAM: Requested size:" + audioSize);
     const range = request.range(audioSize);
-    logger.info(range, "Requested range");
+    logger.info(range, "STREAM: Requested range");
     if (!range) {
         const error = new Error('Range Not Satisfiable');
         error.statusCode = 416;

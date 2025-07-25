@@ -16,6 +16,7 @@ async function getFiles() {
     }
     catch(err) {
         dblog.createLog('ERROR DB getFiles', err);
+        throw err;
     }
 }
 
@@ -44,6 +45,7 @@ async function upsertFile(song_id, basedir, file_path, file_name, modified) {
     }
     catch(err) {
         dblog.createLog('ERROR DB upsertFile', err);
+        throw err;
     }
 }
 
@@ -67,6 +69,7 @@ async function removeFile(song_id) {
     }
     catch(err) {
         dblog.createLog('ERROR DB removeFile', err);
+        throw err;
     }
 }
 

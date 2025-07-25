@@ -17,6 +17,7 @@ async function getSources() {
     }
     catch(err) {
         dblog.createLog('ERROR DB getSources', err);
+        throw err;
     }
 }
 
