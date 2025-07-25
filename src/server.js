@@ -24,6 +24,10 @@ else {
     const bearerAuthPlugin = require('@fastify/bearer-auth');
     const keys = new Set([process.env.BEARER_TOKEN]);
     fastify.register(bearerAuthPlugin, {keys});
+    // cors
+     fastify.register(cors, {
+        origin: ["http://127.0.0.1", "http://music.saba.net"]
+    });
 }
 
 fastify.register(fastifyRange, { throwOnInvalid: true });
