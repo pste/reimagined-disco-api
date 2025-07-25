@@ -111,12 +111,16 @@ async function fastscan( forceFullScan ) {
         logger.info(`DB updating ...`);
         for await (const diskfile of filesdisk) {
             // check if is new
-            const idx = filesdb.findIndex(dbfile => isSameFile(diskfile, dbfile));
+            const idx = filesdb.findIndex(dbfile => isSameFile(diskfile, dbfile)); // TODO SLOW
             if (forceFullScan === true || idx < 0) {
                 diskfile.tags = await readid3(diskfile.fullpath);
                 // works on db - update
                 logger.trace(`DB UPDATE: ${diskfile.fullpath}`);
                 await db.updateSong(diskfile);
+            }
+            // remove just managed item to accelerate next db findings
+            if (idx >= 0) {
+                filesdb.splice(idx, 1);
             }
         }
 
