@@ -8,10 +8,10 @@ async function getCollection() {
                     from albums al \
                     join artists ar on al.artist_id = ar.artist_id';
     const pars = [];
-    logger.trace(pars, stm);
+    logger.trace(pars, `DB: ${stm}`);
     const res = await client.query(stm, pars);
     const rows = res.rows;
-    logger.trace(` ==> ${rows.length}`)
+    logger.trace(`DB ==> ${rows.length}`)
     client.release();
     return rows;
 }
@@ -26,10 +26,10 @@ async function getAlbumsByTitle(title) {
         stm = 'select * from albums';
         pars = [];
     }
-    logger.trace(pars, stm);
+    logger.trace(pars, `DB: ${stm}`);
     const res = await client.query(stm, pars);
     const rows = res.rows;
-    logger.trace(` ==> ${rows.length}`)
+    logger.trace(`DB ==> ${rows.length}`)
     client.release();
     return rows;
 }
@@ -38,10 +38,10 @@ async function getAlbumsByArtist(artist_id) {
     const client = await pool.connect();
     const stm = 'select * from albums where artist_id = $1';
     const pars = [artist_id];
-    logger.trace(pars, stm);
+    logger.trace(pars, `DB: ${stm}`);
     const res = await client.query(stm, pars);
     const rows = res.rows;
-    logger.trace(` ==> ${rows.length}`)
+    logger.trace(`DB ==> ${rows.length}`)
     client.release();
     return rows;
 }
@@ -50,10 +50,10 @@ async function getAlbum(album_id) {
     const client = await pool.connect();
     const stm = 'select * from albums where album_id = $1';
     const pars = [album_id];
-    logger.trace(pars, stm);
+    logger.trace(pars, `DB: ${stm}`);
     const res = await client.query(stm, pars);
     const rows = res.rows;
-    logger.trace(` ==> ${rows.length}`)
+    logger.trace(`DB ==> ${rows.length}`)
     client.release();
     return rows[0];
 }
@@ -62,10 +62,10 @@ async function countAlbums() {
     const client = await pool.connect();
     const stm = 'select count(*) from albums';
     const pars = [];
-    logger.trace(pars, stm);
+    logger.trace(pars, `DB: ${stm}`);
     const res = await client.query(stm, pars);
     const rows = res.rows;
-    logger.trace(` ==> ${rows.length}`)
+    logger.trace(`DB ==> ${rows.length}`)
     client.release();
     return rows;
 }
@@ -78,10 +78,10 @@ async function upsertAlbum(title, artistName, year, genre) {
                 on conflict(title,artist_id) do update set title=$1, artist_id=$2, "year"=$3, genre=$4 \
                 returning *';
     const pars = [title, artist.artist_id, year, genre];
-    logger.trace(pars, stm);
+    logger.trace(pars, `DB: ${stm}`);
     const res = await client.query(stm, pars);
     const rows = res.rows;
-    logger.trace(` ==> ${rows.length}`)
+    logger.trace(`DB ==> ${rows.length}`)
     client.release();
     return rows[0];
 }
@@ -90,10 +90,10 @@ async function getCover(album_id) {
     const client = await pool.connect();
     const stm = 'select * from covers where album_id = $1';
     const pars = [album_id];
-    logger.trace(pars, stm);
+    logger.trace(pars, `DB: ${stm}`);
     const res = await client.query(stm, pars);
     const rows = res.rows;
-    logger.trace(` ==> ${rows.length}`)
+    logger.trace(`DB ==> ${rows.length}`)
     client.release();
     if (rows.length === 1) {
         return rows[0];
@@ -110,10 +110,10 @@ async function upsertCover(album_id, image_buffer) {
                 on conflict(album_id) do update set imagedata=$2'; // this does not return data
     const imagedata = Uint8Array.from(image_buffer);
     const pars = [album_id, imagedata];
-    logger.trace({album_id, imagedata: '..'}, stm);
+    logger.trace({album_id, imagedata: '..'}, `DB: ${stm}`);
     const res = await client.query(stm, pars);
     const rows = res.rows;
-    logger.trace(` ==> ${rows.length}`)
+    logger.trace(`DB ==> ${rows.length}`)
     client.release();
     return rows[0];
 }
@@ -124,17 +124,17 @@ async function clearEmptyAlbums() {
     // clear empty albums
     stm = 'delete from albums where album_id not in (select album_id from songs)';
     pars = [];
-    logger.trace(pars, stm);
+    logger.trace(pars, `DB: ${stm}`);
     await client.query(stm, pars);
     // clear empty cover
     stm = 'delete from covers where album_id not in (select album_id from songs)';
     pars = [];
-    logger.trace(pars, stm);
+    logger.trace(pars, `DB: ${stm}`);
     await client.query(stm, pars);
     // clear empty artists
     stm = 'delete from artists where artist_id not in (select artist_id from albums)';
     pars = [];
-    logger.trace(pars, stm);
+    logger.trace(pars, `DB: ${stm}`);
     await client.query(stm, pars);
     //
     client.release();

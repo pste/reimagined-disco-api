@@ -5,10 +5,10 @@ async function getParameters() {
     const client = await pool.connect();
     const stm = 'select * from parameters';
     const pars = [];
-    logger.trace(pars, stm);
+    logger.trace(pars, `DB: ${stm}`);
     const res = await client.query(stm, pars);
     const rows = res.rows;
-    logger.trace(` ==> ${rows.length}`)
+    logger.trace(`DB ==> ${rows.length}`)
     client.release();
     return rows;
 }
