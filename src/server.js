@@ -26,7 +26,7 @@ else {
     fastify.register(bearerAuthPlugin, {keys});
     // cors
      fastify.register(cors, {
-        origin: ["http://127.0.0.1", "http://music.saba.net"]
+        origin: ["http://127.0.0.1:3000", "http://music.saba.net"]
     });
 }
 
