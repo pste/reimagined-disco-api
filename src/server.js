@@ -1,7 +1,11 @@
 const logger = require('./logger');
 const db = require('./db');
 const streamer = require('./streamer');
-const fastifyRange = require('fastify-range');
+const fastifyRange = require('fastify-range'); // needed to stream data
+
+const cookie = require('@fastify/cookie');
+const session = require('@fastify/session');
+const formbody = require('fastify-formbody');
 
 // =============== FASTIFY =============== //
 
@@ -30,10 +34,29 @@ else {
             "http://music.saba.net"
         ]
     });
-    // token
-    const bearerAuthPlugin = require('@fastify/bearer-auth');
-    const keys = new Set([process.env.BEARER_TOKEN]);
-    fastify.register(bearerAuthPlugin, {keys});
+
+    // per i form POST
+    app.register(formbody);
+
+    // plugin cookie
+    app.register(cookie);
+
+    // plugin per sessione
+    app.register(session, {
+        secret: process.env.SESSION_SECRET,
+        cookie: {
+            secure: false, // true solo in HTTPS
+            httpOnly: true,
+            sameSite: 'lax',
+            path: '/',
+            maxAge: 3600 * 8 // 8 ore
+        }
+    });
+
+    // token - dismissed ?
+    //const bearerAuthPlugin = require('@fastify/bearer-auth');
+    //const keys = new Set([process.env.BEARER_TOKEN]);
+    //fastify.register(bearerAuthPlugin, {keys});
 }
 
 fastify.register(fastifyRange, { throwOnInvalid: true });
@@ -41,8 +64,26 @@ fastify.register(fastifyRange, { throwOnInvalid: true });
 // =============== ROUTES =============== //
 
 fastify.get('/', function(req, reply) {
-    reply.send({ app: true });
+    reply.send({ api: "Online" });
 })
+
+fastify.post('/login', async function(req, reply) {
+    const { username, password } = req.body;
+    const user = await db.getUser(username, password);
+    if (user) {
+        req.session.user = { username: user.username };
+        return { message: 'Login Successful!' };
+    }
+    reply.code(401).send({ error: 'Invalid credentials' });
+})
+
+app.post('/logout', async (req, reply) => {
+  req.destroySession((err) => {
+    if (err) return reply.code(500).send({ error: 'Logout failed' });
+    reply.send({ message: 'Logout OK' });
+  });
+});
+
 /*
 fastify.get('/search/artists', async function(req, reply) {
     const name = req?.query?.name || '';
@@ -53,47 +94,65 @@ fastify.get('/search/artists', async function(req, reply) {
 })*/
 
 fastify.get('/collection', async function(req, reply) {
-    logger.trace(`/collection`);
-    const data = await db.getCollection();
-    await reply.send(data);
+    if (req.session.user) {
+        logger.trace(`/collection`);
+        const data = await db.getCollection();
+        await reply.send(data);
+    }
+    reply.code(401).send({ error: 'Not logged in' });
 })
 
 fastify.get('/search/cover', async function(req, reply) {
-    const album_id = req?.query?.album_id;
-    logger.trace(`/search/cover [${album_id}]`);
-    const data = await db.getCover(album_id);
-    await reply.send(data);
+    if (req.session.user) {
+        const album_id = req?.query?.album_id;
+        logger.trace(`/search/cover [${album_id}]`);
+        const data = await db.getCover(album_id);
+        await reply.send(data);
+    }
+    reply.code(401).send({ error: 'Not logged in' });
 })
 
 fastify.get('/sources', async function(req, reply) {
-    logger.trace(`/sources`);
-    const data = await db.getSources();
-    await reply.send(data);
+    if (req.session.user) {
+        logger.trace(`/sources`);
+        const data = await db.getSources();
+        await reply.send(data);
+    }
+    reply.code(401).send({ error: 'Not logged in' });
 })
 
 fastify.get('/search/albums', async function(req, reply) {
-    const title = req?.query?.title || '';
-    const artistid = req?.query?.artistid;
-    logger.trace(`/search/albums [${title}|${artistid}]`);
-    const data = await db.getAlbums({ title, artistid });
-    await reply.send(data);
+    if (req.session.user) {
+        const title = req?.query?.title || '';
+        const artistid = req?.query?.artistid;
+        logger.trace(`/search/albums [${title}|${artistid}]`);
+        const data = await db.getAlbums({ title, artistid });
+        await reply.send(data);
+    }
+    reply.code(401).send({ error: 'Not logged in' });
 })
 
 fastify.get('/search/songs', async function(req, reply) {
-    const albumid = req?.query?.albumid;
-    const title = req?.query?.title || '';
-    logger.trace(`/search/songs [${albumid}|${title}]`);
-    //
-    const data = await db.getSongs({albumid, title});
-    await reply.send(data);
+    if (req.session.user) {
+        const albumid = req?.query?.albumid;
+        const title = req?.query?.title || '';
+        logger.trace(`/search/songs [${albumid}|${title}]`);
+        //
+        const data = await db.getSongs({albumid, title});
+        await reply.send(data);
+    }
+    reply.code(401).send({ error: 'Not logged in' });
 })
 
 fastify.get('/stream/song', async function(req, reply) {
-    const songid = req?.query?.id;
-    const song = await db.getSongInfo(songid);
-    logger.trace("Streaming " + song.fullpath);
-    //
-    return streamer.streamFile(req, reply, song.fullpath);
+    if (req.session.user) {
+        const songid = req?.query?.id;
+        const song = await db.getSongInfo(songid);
+        logger.trace("Streaming " + song.fullpath);
+        //
+        return streamer.streamFile(req, reply, song.fullpath);
+    }
+    reply.code(401).send({ error: 'Not logged in' });
 })
 
 /*
