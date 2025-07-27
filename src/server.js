@@ -5,7 +5,7 @@ const fastifyRange = require('fastify-range'); // needed to stream data
 
 const cookie = require('@fastify/cookie');
 const session = require('@fastify/session');
-const formbody = require('fastify-formbody');
+const formbody = require('@fastify/formbody');
 
 // =============== FASTIFY =============== //
 
