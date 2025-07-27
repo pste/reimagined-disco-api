@@ -36,13 +36,13 @@ else {
     });
 
     // per i form POST
-    app.register(formbody);
+    fastify.register(formbody);
 
     // plugin cookie
-    app.register(cookie);
+    fastify.register(cookie);
 
     // plugin per sessione
-    app.register(session, {
+    fastify.register(session, {
         secret: process.env.SESSION_SECRET,
         cookie: {
             secure: false, // true solo in HTTPS
@@ -77,7 +77,7 @@ fastify.post('/login', async function(req, reply) {
     reply.code(401).send({ error: 'Invalid credentials' });
 })
 
-app.post('/logout', async (req, reply) => {
+fastify.post('/logout', async (req, reply) => {
   req.destroySession((err) => {
     if (err) return reply.code(500).send({ error: 'Logout failed' });
     reply.send({ message: 'Logout OK' });
