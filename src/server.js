@@ -21,12 +21,18 @@ if (process.env.DEVSERVER) {
     });
 }
 else {
+    // token
     const bearerAuthPlugin = require('@fastify/bearer-auth');
     const keys = new Set([process.env.BEARER_TOKEN]);
     fastify.register(bearerAuthPlugin, {keys});
     // cors
-     fastify.register(cors, {
-        origin: ["http://127.0.0.1:3000", "http://music.saba.net"]
+    fastify.register(cors, {
+        credentials: true,
+        origin: [
+            "http://127.0.0.1:3000", 
+            "http://localhost:3000", 
+            "http://music.saba.net"
+        ]
     });
 }
 
