@@ -72,7 +72,7 @@ fastify.post('/login', async function(req, reply) {
     const user = await db.getUser(username, password);
     if (user) {
         req.session.user = { username: user.username };
-        return { message: 'Login Successful!' };
+        return { username: user.username };
     }
     reply.code(401).send({ error: 'Invalid credentials' });
 })
