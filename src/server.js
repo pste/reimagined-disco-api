@@ -21,10 +21,6 @@ if (process.env.DEVSERVER) {
     });
 }
 else {
-    // token
-    const bearerAuthPlugin = require('@fastify/bearer-auth');
-    const keys = new Set([process.env.BEARER_TOKEN]);
-    fastify.register(bearerAuthPlugin, {keys});
     // cors
     fastify.register(cors, {
         credentials: true,
@@ -34,6 +30,10 @@ else {
             "http://music.saba.net"
         ]
     });
+    // token
+    const bearerAuthPlugin = require('@fastify/bearer-auth');
+    const keys = new Set([process.env.BEARER_TOKEN]);
+    fastify.register(bearerAuthPlugin, {keys});
 }
 
 fastify.register(fastifyRange, { throwOnInvalid: true });
