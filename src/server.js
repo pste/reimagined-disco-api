@@ -35,9 +35,9 @@ fastify.register(session, {
     secret: process.env.SESSION_SECRET,
     cookie: {
         secure: false, // true solo in HTTPS
-        ///httpOnly: true,
-        //sameSite: 'None',
-        //path: '/',
+        httpOnly: true,
+        sameSite: 'None',
+        path: '/',
         maxAge: 15 * 1000 // msec
     },
     saveUninitialized: false
