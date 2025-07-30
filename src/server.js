@@ -34,7 +34,7 @@ fastify.register(session, {
     cookieName: 'discocookie',
     secret: process.env.SESSION_SECRET,
     cookie: {
-        secure: auto, // true solo in HTTPS
+        secure: 'auto', // true solo in HTTPS
         //httpOnly: true,
         //sameSite: 'None',
         //path: '/',
