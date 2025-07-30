@@ -31,13 +31,13 @@ fastify.register(cors, {
 // cookie session handler
 fastify.register(cookie);
 fastify.register(session, {
-    cookieName: 'mysession3',
+    cookieName: 'discocookie',
     secret: process.env.SESSION_SECRET,
     cookie: {
-        secure: false, // true solo in HTTPS
-        httpOnly: true,
-        sameSite: 'None',
-        path: '/',
+        secure: auto, // true solo in HTTPS
+        //httpOnly: true,
+        //sameSite: 'None',
+        //path: '/',
         maxAge: 15 * 1000 // msec
     },
     saveUninitialized: false
@@ -56,9 +56,8 @@ fastify.register((instance, opts, done) => {
     instance.post('/login', async (req, reply) => {
         const { username, password } = req.body;
         const dbuser = await db.getUser(username, password);
-        logger.debug(dbuser);
         if (dbuser) {
-            const authuser = { name: dbuser.username, authenticated: true };
+            const authuser = { username: dbuser.username, authenticated: true };
             req.session.set('user', authuser);
             return authuser;
         }
