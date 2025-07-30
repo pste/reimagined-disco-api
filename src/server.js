@@ -1,11 +1,11 @@
 const logger = require('./logger');
-const db = require('./db');
-const streamer = require('./streamer');
-const fastifyRange = require('fastify-range'); // needed to stream data
-
+const fastifyApp = require('fastify');
+const cors = require('@fastify/cors');
 const cookie = require('@fastify/cookie');
 const session = require('@fastify/session');
-const formbody = require('@fastify/formbody');
+const fastifyRange = require('fastify-range'); // needed to stream data
+const db = require('./db');
+const streamer = require('./streamer');
 
 // =============== FASTIFY =============== //
 
@@ -15,155 +15,152 @@ const fastifyOptions = {
     requestTimeout: 10 * 1000 // 10 secs
 }
 
-const fastify = require('fastify')( fastifyOptions );
-const cors = require('@fastify/cors');
+const fastify = fastifyApp( fastifyOptions );
 
-if (process.env.DEVSERVER) {
-    logger.info('DEV SERVER MODE ON');
-    fastify.register(cors, {
-        origin: "*"
-    });
-}
-else {
-    // cors
-    fastify.register(cors, {
-        credentials: true,
-        origin: [
-            "http://127.0.0.1:3000", 
-            "http://localhost:3000", 
-            "http://music.saba.net"
-        ]
-    });
+// cors
 
-    // per i form POST
-    fastify.register(formbody);
+fastify.register(cors, {
+    credentials: true,
+    origin: [
+        "http://127.0.0.1:3000",
+        "http://localhost:3000",
+        "http://music.saba.net"
+    ]
+});
 
-    // plugin cookie
-    fastify.register(cookie);
-
-    // plugin per sessione
-    fastify.register(session, {
-        secret: process.env.SESSION_SECRET,
-        cookie: {
-            secure: false, // true solo in HTTPS
-            httpOnly: true,
-            sameSite: 'lax',
-            path: '/',
-            maxAge: 3600 * 8 // 8 ore
-        }
-    });
-
-    // token - dismissed ?
-    //const bearerAuthPlugin = require('@fastify/bearer-auth');
-    //const keys = new Set([process.env.BEARER_TOKEN]);
-    //fastify.register(bearerAuthPlugin, {keys});
-}
+// cookie session handler
+fastify.register(cookie);
+fastify.register(session, {
+    cookieName: 'mysession3',
+    secret: process.env.SESSION_SECRET,
+    cookie: {
+        secure: false, // true solo in HTTPS
+        ///httpOnly: true,
+        //sameSite: 'None',
+        //path: '/',
+        maxAge: 15 * 1000 // msec
+    },
+    saveUninitialized: false
+});
 
 fastify.register(fastifyRange, { throwOnInvalid: true });
 
 // =============== ROUTES =============== //
-
-fastify.get('/', function(req, reply) {
-    reply.send({ api: "Online" });
-})
-
-fastify.post('/login', async function(req, reply) {
-    const { username, password } = req.body;
-    const user = await db.getUser(username, password);
-    if (user) {
-        req.session.user = { username: user.username };
-        return { username: user.username };
-    }
-    reply.code(401).send({ error: 'Invalid credentials' });
-})
-
-fastify.post('/logout', async (req, reply) => {
-  req.destroySession((err) => {
-    if (err) return reply.code(500).send({ error: 'Logout failed' });
-    reply.send({ message: 'Logout OK' });
-  });
-});
-
 /*
-fastify.get('/search/artists', async function(req, reply) {
-    const name = req?.query?.name || '';
-    logger.trace(`/search/artists ${name}`);
-    //
-    const data = await db.getArtists(name);
-    await reply.send(data);
+fastify.get('/', function(req, reply) {
+    reply.send({ api: "Online", authenticated: req.session.authenticated });
 })*/
 
-fastify.get('/collection', async function(req, reply) {
-    if (req.session.user) {
-        logger.trace(`/collection`);
-        const data = await db.getCollection();
-        await reply.send(data);
-    }
-    reply.code(401).send({ error: 'Not logged in' });
+// OPEN ROUTES
+fastify.register((instance, opts, done) => {
+    instance.post('/login', async (req, reply) => {
+        const { username, password } = req.body;
+        const dbuser = await db.getUser(username, password);
+        logger.debug(dbuser);
+        if (dbuser) {
+            const authuser = { name: dbuser.username, authenticated: true };
+            req.session.set('user', authuser);
+            return authuser;
+        }
+        else {
+            return reply.status(401).send({ error: 'Invalid credentials' });
+        }
+    })
+
+    instance.post('/logout', async (req, reply) => {
+        const user = req.session.get('user');
+        if (user) {
+            await req.session.destroy();
+            return { message: 'Logout OK' };
+        }
+        else {
+            return { message: "Logged out" };
+        }
+    });
+
+    done()
 })
 
-fastify.get('/search/cover', async function(req, reply) {
-    if (req.session.user) {
+// CLOSED ROUTES
+fastify.register((instance, opts, done) => {
+
+    instance.addHook('preHandler', (req, reply, next) => {
+        const user = req.session.get('user')
+        console.log(user)
+        if (user?.authenticated === true) {
+            next()
+        }
+        else {
+            reply.status(401).send({ error: "401 - unauthorized" })
+        }
+    })
+
+    /*
+    instance.get('/search/artists', async function(req, reply) {
+        const name = req?.query?.name || '';
+        logger.trace(`/search/artists ${name}`);
+        //
+        const data = await db.getArtists(name);
+        return reply.send(data);
+    })*/
+
+    instance.get('/collection', async (req, reply) => {
+        logger.trace(`/collection`);
+        const data = await db.getCollection();
+        return data;
+    })
+
+    instance.get('/search/cover', async (req, reply) => {
         const album_id = req?.query?.album_id;
         logger.trace(`/search/cover [${album_id}]`);
         const data = await db.getCover(album_id);
-        await reply.send(data);
-    }
-    reply.code(401).send({ error: 'Not logged in' });
-})
+        return data;
+    })
 
-fastify.get('/sources', async function(req, reply) {
-    if (req.session.user) {
+    instance.get('/sources', async function(req, reply) {
         logger.trace(`/sources`);
         const data = await db.getSources();
-        await reply.send(data);
-    }
-    reply.code(401).send({ error: 'Not logged in' });
-})
+        return data;
+    })
 
-fastify.get('/search/albums', async function(req, reply) {
-    if (req.session.user) {
+    instance.get('/search/albums', async function(req, reply) {
         const title = req?.query?.title || '';
         const artistid = req?.query?.artistid;
         logger.trace(`/search/albums [${title}|${artistid}]`);
         const data = await db.getAlbums({ title, artistid });
-        await reply.send(data);
-    }
-    reply.code(401).send({ error: 'Not logged in' });
-})
+        return data;
+    })
 
-fastify.get('/search/songs', async function(req, reply) {
-    if (req.session.user) {
+    instance.get('/search/songs', async function(req, reply) {
         const albumid = req?.query?.albumid;
         const title = req?.query?.title || '';
         logger.trace(`/search/songs [${albumid}|${title}]`);
         //
         const data = await db.getSongs({albumid, title});
-        await reply.send(data);
-    }
-    reply.code(401).send({ error: 'Not logged in' });
-})
+        return data;
+    })
 
-fastify.get('/stream/song', async function(req, reply) {
-    if (req.session.user) {
+    instance.get('/stream/song', async function(req, reply) {
         const songid = req?.query?.id;
         const song = await db.getSongInfo(songid);
         logger.trace("Streaming " + song.fullpath);
         //
         return streamer.streamFile(req, reply, song.fullpath);
-    }
-    reply.code(401).send({ error: 'Not logged in' });
+    })
+
+    /*
+    instance.get('/search/song', async function(req, reply) {
+        const id = req.query.id;
+        logger.trace(`/search/song ${id}`);
+        //
+        const data = await db.getSongInfo(id);
+        await reply.send(data);
+    })*/
+
+    done()
 })
 
-/*
-fastify.get('/search/song', async function(req, reply) {
-    const id = req.query.id;
-    logger.trace(`/search/song ${id}`);
-    //
-    const data = await db.getSongInfo(id);
-    await reply.send(data);
-})*/
-
+// 
 module.exports.run = () => {
     fastify.listen( { port: process.env.PORT, host: '0.0.0.0' }, function(err) {
         if (err) {
