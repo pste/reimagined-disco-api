@@ -22,8 +22,7 @@ const fastify = fastifyApp( fastifyOptions );
 fastify.register(cors, {
     credentials: true,
     origin: [
-        "http://127.0.0.1:3000",
-        "http://localhost:3000",
+        "http://localhost.saba.net:3000",
         "http://music.saba.net"
     ]
 });
@@ -34,7 +33,7 @@ fastify.register(session, {
     cookieName: 'discocookie',
     secret: process.env.SESSION_SECRET,
     cookie: {
-        secure: 'auto', // true solo in HTTPS
+        secure: 'auto', // true only for HTTPS, also handles sameSite
         //httpOnly: true,
         //sameSite: 'None',
         //path: '/',
