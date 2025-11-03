@@ -39,7 +39,8 @@ fastify.register(session, {
         //path: '/',
         maxAge: parseInt(process.env.SESSION_TIMEOUTSECS) * 1000 // msec
     },
-    saveUninitialized: false
+    saveUninitialized: false,
+    rolling: true,
 });
 
 fastify.register(fastifyRange, { throwOnInvalid: true });
