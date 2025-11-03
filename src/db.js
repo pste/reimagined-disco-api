@@ -151,11 +151,11 @@ async function updateSong(fileinfo) {
         cover: fileinfo.tags?.image?.imageBuffer // .data ?
     }
     if (songdata.artist === 'UNKNOWN') {
-        logger.debug(songdata);
+        logger.debug(songdata, "updateSong UNKNOWN artist");
     }
     const album = await albums.upsertAlbum(songdata.album, songdata.artist, songdata.year, songdata.genre);
     const song = await songs.upsertSong(songdata.title, songdata.trackNumber, songdata.discNumber, album.album_id);
-    logger.trace(song)
+    logger.trace(song, "updateSong SONG:");
     const file = await files.upsertFile(song.song_id, songdata.basedir, songdata.filepath, songdata.filename, songdata.modified);
     if (songdata.cover) {
         await albums.upsertCover(song.album_id, songdata.cover);

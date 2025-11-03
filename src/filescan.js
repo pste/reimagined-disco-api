@@ -35,7 +35,7 @@ async function readid3(filepath) {
         tags = await NodeID3.read(filepath, options);
     }
     catch(err) {
-        logger.error(err);
+        logger.error(err, "filescan readid3 error:");
     }
     return tags;
 }
@@ -138,7 +138,7 @@ async function fastscan( forceFullScan ) {
         logger.info(`DB done!`);
     }
     catch(err) {
-        logger.error(err);
+        logger.error(err, "filescan fastscan error:");
         // DO NOT THROW
     }
 }
