@@ -37,7 +37,7 @@ fastify.register(session, {
         //httpOnly: true,
         //sameSite: 'None',
         //path: '/',
-        maxAge: 15 * 1000 // msec
+        maxAge: parseInt(process.env.SESSION_TIMEOUTSECS) * 1000 // msec
     },
     saveUninitialized: false
 });
@@ -61,6 +61,7 @@ fastify.register((instance, opts, done) => {
             return authuser;
         }
         else {
+            logger.error("server: /login 401 - invalid credentials");
             return reply.status(401).send({ error: 'Invalid credentials' });
         }
     })
@@ -89,6 +90,7 @@ fastify.register((instance, opts, done) => {
             next()
         }
         else {
+            logger.error("server: /prehandler 401 - unauthorized")
             reply.status(401).send({ error: "401 - unauthorized" })
         }
     })
@@ -141,9 +143,17 @@ fastify.register((instance, opts, done) => {
     instance.get('/stream/song', async function(req, reply) {
         const songid = req?.query?.id;
         const song = await db.getSongInfo(songid);
-        logger.trace("Streaming " + song.fullpath);
+        logger.trace(`Streaming ${song.fullpath}`);
         //
         return streamer.streamFile(req, reply, song.fullpath);
+    })
+
+    instance.get('/chunk/song', async function(req, reply) {
+        const songid = req?.query?.id;
+        const song = await db.getSongInfo(songid);
+        logger.trace(`Chunking ${song.fullpath}`);
+        //
+        return streamer.chunkFile(req, reply, song.fullpath);
     })
 
     /*
@@ -162,7 +172,7 @@ fastify.register((instance, opts, done) => {
 module.exports.run = () => {
     fastify.listen( { port: process.env.PORT, host: '0.0.0.0' }, function(err) {
         if (err) {
-            logger.error(err);
+            logger.error(err, "server error.");
             process.exit(1);
         }
         logger.info('Server up ...')
