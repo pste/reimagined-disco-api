@@ -39,6 +39,7 @@ async function getCollection() {
     data = await albums.getCollection();
     return data;
 }
+/*
 async function getCollectionOrig() {
     let data = [];
     data = await artists.getArtists();
@@ -50,7 +51,7 @@ async function getCollectionOrig() {
         })
     );
     return data;
-}
+}*/
 
 async function getCover(album_id) {
     let data = [];

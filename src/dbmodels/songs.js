@@ -49,6 +49,24 @@ async function getSong(song_id) {
     }
 }
 
+async function getSongStats(song_id) {
+    try {
+        const client = await pool.connect();
+        const stm = 'select * from statistics where song_id = $1';
+        const pars = [song_id];
+        logger.trace(pars, `DB: ${stm}`);
+        const res = await client.query(stm, pars);
+        const rows = res.rows;
+        logger.trace(`DB ==> ${rows.length}`)
+        client.release();
+        return rows[0];
+    }
+    catch(err) {
+        dblog.createLog('ERROR DB getSongStats', err);
+        throw err;
+    }
+}
+
 async function getSongFile(song_id) {
     try {
         const client = await pool.connect();
@@ -108,6 +126,7 @@ async function countSongs() {
 module.exports = {
     getSongs,
     getSong,
+    getSongStats,
     getSongFile,
     upsertSong,
     countSongs,

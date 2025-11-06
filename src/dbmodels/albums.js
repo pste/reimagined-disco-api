@@ -6,9 +6,20 @@ const pool = require('./dbpool');
 async function getCollection() {
     try {
         const client = await pool.connect();
-        const stm = 'select al.*, ar.name \
+        /*const stmOld = 'select al.*, ar.name \
                         from albums al \
-                        join artists ar on al.artist_id = ar.artist_id';
+                        join artists ar on al.artist_id = ar.artist_id';*/
+        const stm = `WITH albumstats as (
+            SELECT so.album_id, MAX(s.added) as added, MAX(s.played) as played, MAX(s.stars) as stars
+            FROM statistics s 
+            LEFT JOIN songs so ON s.song_id = so.song_id
+            GROUP BY so.album_id
+        )
+        SELECT al.*, ar.name, st.*
+            FROM albums al
+            JOIN artists ar ON al.artist_id = ar.artist_id
+            JOIN albumstats st ON al.album_id = st.album_id`;
+
         const pars = [];
         logger.trace(pars, `DB: ${stm}`);
         const res = await client.query(stm, pars);
