@@ -2,6 +2,7 @@ const path = require('path');
 const artists = require('./dbmodels/artists');
 const albums = require('./dbmodels/albums');
 const songs = require('./dbmodels/songs');
+const songstats = require('./dbmodels/songstats');
 const files = require('./dbmodels/files');
 const sources = require('./dbmodels/sources');
 const pars = require('./dbmodels/parameters');
@@ -10,8 +11,6 @@ const users = require('./dbmodels/users');
 const logger = require('./logger');
 const utils = require('./utils');
 // const { getSources } = require('./dbmodels/sources');
-
-/////////////////////////////////////////////////////////////////
 
 /////////////////////////////////////////////////////////////////
 
@@ -110,7 +109,7 @@ async function getSongInfo(song_id) {
 }
 
 // stats page
-async function stats() {
+async function fullStats() {
     const c1 = await artists.countArtists();
     const c2 = await albums.countAlbums();
     const c3 = await songs.countSongs();
@@ -119,6 +118,11 @@ async function stats() {
         albums: c2[0].count,
         songs: c3[0].count
     }
+}
+
+//
+async function updateSongStats(user_id, song_id) {
+    return await songstats.touchPlayed(user_id, song_id);
 }
 
 /////////////////////////////////////////////////////////////////
@@ -185,11 +189,11 @@ module.exports = {
     getCollection,
     getSources: sources.getSources,
     getCover,
-   // getArtists,
+    // getArtists,
     getAlbums,
     getSongs,
     getSongInfo,
-    stats,
+    stats: fullStats,
     // filescan:
     getFiles,
     removeFile,
@@ -198,4 +202,5 @@ module.exports = {
     // generic:
     getParameters,
     getUser,
+    updateSongStats,
 }

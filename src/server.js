@@ -57,7 +57,7 @@ fastify.register((instance, opts, done) => {
         const { username, password } = req.body;
         const dbuser = await db.getUser(username, password);
         if (dbuser) {
-            const authuser = { username: dbuser.username, authenticated: true };
+            const authuser = { username: dbuser.username, user_id: dbuser.user_id, authenticated: true };
             req.session.set('user', authuser);
             return authuser;
         }
@@ -85,8 +85,8 @@ fastify.register((instance, opts, done) => {
 fastify.register((instance, opts, done) => {
 
     instance.addHook('preHandler', (req, reply, next) => {
-        const user = req.session.get('user')
-        console.log(user)
+        const user = req.session.get('user');
+        logger.trace(`preHandler ${JSON.stringify(user)}`);
         if (user?.authenticated === true) {
             next()
         }
@@ -143,6 +143,11 @@ fastify.register((instance, opts, done) => {
 
     instance.get('/stream/song', async function(req, reply) {
         const songid = req?.query?.id;
+        const user = req.session.get('user');
+        if (user?.user_id) {
+            logger.trace(`updateSongStats ${songid} ${user.user_id}`);
+            await db.updateSongStats(songid, user.user_id);
+        }
         const song = await db.getSongInfo(songid);
         logger.trace(`Streaming ${song.fullpath}`);
         //
