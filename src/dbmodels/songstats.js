@@ -6,9 +6,9 @@ async function touchPlayed(user_id, song_id) {
     try {
         const client = await pool.connect();
         let stm, pars;
-        stm = 'insert into user_stats (user_id,song_id,played) values ($1,$2,current_timestamp) \
-                    on conflict(user_id,song_id) do update set played=current_timestamp \
-                    returning *';
+        stm = `insert into user_stats (user_id,song_id,played,playcount) values ($1,$2,current_timestamp,1)
+                on conflict(user_id,song_id) do update set played=current_timestamp,playcount=user_stats.playcount+1
+                returning *`;
         pars = [user_id, song_id];
         logger.trace(pars, `DB: ${stm}`);
         const res = await client.query(stm, pars);

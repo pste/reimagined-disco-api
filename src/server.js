@@ -141,13 +141,19 @@ fastify.register((instance, opts, done) => {
         return data;
     })
 
-    instance.get('/stream/song', async function(req, reply) {
-        const songid = req?.query?.id;
+    instance.post('/stream/song', async function(req, reply) {
+        const { song_id } = req.body;
         const user = req.session.get('user');
         if (user?.user_id) {
-            logger.trace(`updateSongStats ${songid} ${user.user_id}`);
-            await db.updateSongStats(songid, user.user_id);
+            logger.trace(`updateSongStats ${song_id} ${user.user_id}`);
+            const data = await db.updateSongStats(user.user_id, song_id);
+            return data;
         }
+        return {}
+    })
+
+    instance.get('/stream/song', async function(req, reply) {
+        const songid = req?.query?.id;
         const song = await db.getSongInfo(songid);
         logger.trace(`Streaming ${song.fullpath}`);
         //
