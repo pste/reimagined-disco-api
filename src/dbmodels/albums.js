@@ -139,7 +139,7 @@ async function upsertAlbum(title, artistName, year, genre) {
 async function getCover(album_id) {
     try {
         const client = await pool.connect();
-        const stm = 'select * from covers where album_id = $1';
+        const stm = 'select imagedata from covers where album_id = $1';
         const pars = [album_id];
         logger.trace(pars, `DB: ${stm}`);
         const res = await client.query(stm, pars);
@@ -147,7 +147,7 @@ async function getCover(album_id) {
         logger.trace(`DB ==> ${rows.length}`)
         client.release();
         if (rows.length === 1) {
-            return rows[0];
+            return rows[0].imagedata;
         }
         else {
             return undefined;

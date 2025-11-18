@@ -115,6 +115,7 @@ fastify.register((instance, opts, done) => {
         const album_id = req?.query?.album_id;
         logger.trace(`/search/cover [${album_id}]`);
         const data = await db.getCover(album_id);
+        console.log(data)
         return data;
     })
 
