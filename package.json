@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "app.js",
   "scripts": {
-    "dev": "node -r dotenv/config app.js dotenv_config_path=$PWD/.env",
+    "dev": "nodemon -r dotenv/config app.js dotenv_config_path=$PWD/.env",
     "prod": "node app.js"
   },
   "author": "pste",
@@ -17,6 +17,7 @@
     "fastify-range": "^2.0.0",
     "node-cron": "^4.2.1",
     "node-id3": "^0.2.6",
+    "nodemon": "^3.1.11",
     "pg": "^8.13.1",
     "pino": "^9.5.0",
     "pino-pretty": "^13.0.0"
