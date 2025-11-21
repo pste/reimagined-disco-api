@@ -8,7 +8,7 @@ SET TMPDIR=cicd-%random%
 
 rem GIT: clone, move to latest tag
 echo "Moving to %TEMP% ..."
-cd %TEMP%
+cd /d %TEMP%
 git clone https://github.com/pste/%APPNAME%.git %TMPDIR%
 cd %TMPDIR%
 
