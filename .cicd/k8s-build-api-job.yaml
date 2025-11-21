@@ -1,0 +1,28 @@
+# kubectl create secret -n mynamespace generic kaniko-secret --from-file=<path to kaniko-secret.json>
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: build-api
+  namespace: reimagined-disco
+spec:
+  ttlSecondsAfterFinished: 180
+  template:
+    spec:
+      containers:
+        - name: img
+          # https://github.com/genuinetools/img
+          image: pirraste/img
+          env:
+            - name: CODEREPO
+              value: https://github.com/pste/reimagined-disco-api.git
+            - name: DOCKERUSR
+              value: pirraste
+            - name: DOCKERPWD
+              valueFrom:
+                secretKeyRef:
+                  name: dockersecrets
+                  key: DOCKERPWD
+            - name: DOCKERFILE
+              value: ".docker/Dockerfile"
+      restartPolicy: Never
