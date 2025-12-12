@@ -6,7 +6,7 @@ async function start() {
     await server.run();
     await filescan.installJob();
     // run on boot
-    if (!process.env.DEVSERVER) {
+    if (process.env.BOOTSCAN === "yes") {
         await filescan.fastscan();
     }
     else {
