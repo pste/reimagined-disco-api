@@ -79,7 +79,7 @@ fastify.register((instance, opts, done) => {
     });
 
     done()
-})
+}, { prefix: '/api' });
 
 // CLOSED ROUTES
 fastify.register((instance, opts, done) => {
@@ -179,7 +179,7 @@ fastify.register((instance, opts, done) => {
     })*/
 
     done()
-})
+}, { prefix: '/api' });
 
 // 
 module.exports.run = () => {
