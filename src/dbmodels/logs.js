@@ -6,7 +6,7 @@ async function createLog(msg, details) {
     let stm, pars;
     // create log
     const client = await pool.connect();
-    stm = 'insert into logs() values ($1,$2)';
+    stm = 'insert into logs(message,details) values ($1,$2)';
     pars = [msg, details || ''];
     logger.trace(pars, `DB: ${stm}`);
     await client.query(stm, pars);
