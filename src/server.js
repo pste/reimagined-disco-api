@@ -169,6 +169,17 @@ fastify.register((instance, opts, done) => {
         return streamer.chunkFile(req, reply, song.fullpath);
     })
 
+    instance.post('/user/password', async function(req, reply) {
+        const { value } = req.body;
+        const user = req.session.get('user');
+        if (user?.user_id) {
+            logger.trace(`saveUserPassword for ${user.user_id}`);
+            const data = await db.savePassword(user.user_id, value);
+            return data;
+        }
+        return {}
+    })
+
     /*
     instance.get('/search/song', async function(req, reply) {
         const id = req.query.id;

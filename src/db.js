@@ -1,4 +1,6 @@
 const path = require('path');
+const crypto = require('node:crypto');
+
 const artists = require('./dbmodels/artists');
 const albums = require('./dbmodels/albums');
 const songs = require('./dbmodels/songs');
@@ -180,7 +182,13 @@ async function getParameters() {
 }
 
 async function getUser(user, pwd) {
-    return await users.getUser(user, pwd);
+    const pwdhash = crypto.createHash('sha256').update(pwd).digest('hex');
+    return await users.getUser(user, pwdhash);
+}
+
+async function savePassword(userid, pwd) {
+    const pwdhash = crypto.createHash('sha256').update(pwd).digest('hex');
+    return await users.savePassword(userid, pwdhash);
 }
 
 /////////////////////////////////////////////////////////////////
@@ -202,5 +210,6 @@ module.exports = {
     // generic:
     getParameters,
     getUser,
+    savePassword,
     updateSongStats,
 }
