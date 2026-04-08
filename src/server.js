@@ -23,7 +23,9 @@ fastify.register(cors, {
     credentials: true,
     origin: [
         "http://localhost.saba.net:3000",
-        "http://music.saba.net"
+        "http://music.saba.net",
+        "http://music.sepo.net",
+        "https://music.sepo.net"
     ]
 });
 
