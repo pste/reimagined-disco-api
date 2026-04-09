@@ -1,0 +1,19 @@
+#!/bin/bash
+# Valida l'ultimo tag creato ad ogni commit. Se non è valido blocca e permette di crearne uno nuovo corretto.
+# Workflow: git tag -a v1.2.3 -m "v1.2.3" → git commit → questo hook valida.
+
+# get latest TAG. If no tag exists, exit without errors
+LATEST_TAG=$(git for-each-ref refs/tags/ --count=1 --sort=-version:refname --format="%(refname:short)")
+if [ -z "$LATEST_TAG" ]; then exit 0; fi
+
+# test semver format on the tag
+SEMVER_RE='^v([0-9]+)\.([0-9]+)\.([0-9]+)$'
+TAG_CHECK=$(echo $LATEST_TAG | grep -E "$SEMVER_RE" | wc -l)
+
+# verify test results to allow/block the operation
+if [ "1" == "$TAG_CHECK" ];then
+  exit 0 # no-op
+else
+  echo "$LATEST_TAG does not respect the semver format. Commit is blocked!"
+  exit 1
+fi

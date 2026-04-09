@@ -12,6 +12,13 @@ Built with Fastify and PostgreSQL, featuring automatic file scanning to import m
 - **ID3 Parsing**: node-id3
 - **Scheduling**: node-cron
 
+## Getting Started
+
+```bash
+# After cloning the repository: activate the hook(s)
+git config core.hooksPath .githooks
+```
+
 ## Build
 `docker build -t reimagined-disco-api:v0.0.1 -f .docker/Dockerfile .`
 

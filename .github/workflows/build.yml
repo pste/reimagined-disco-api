@@ -46,8 +46,8 @@ jobs:
                 IMAGE: pirraste/reimagined-disco-api
                 TAG: ${{ github.ref_name }}
               run: |
-                git clone https://x-access-token:${GH_TOKEN}@github.com/pste/reimagined-disco-k8s.git k8s
-                cd k8s
+                git clone https://x-access-token:${GH_TOKEN}@github.com/pste/reimagined-disco-k8s.git k8s-repo
+                cd k8s-repo/k8s
                 kustomize edit set image ${IMAGE}:${TAG}
                 git config user.email "actions@github.com"
                 git config user.name "GitHub Actions"
