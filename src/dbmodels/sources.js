@@ -3,8 +3,8 @@ const dblog = require('./logs');
 const pool = require('./dbpool');
 
 async function getSources() {
+    const client = await pool.connect();
     try {
-        const client = await pool.connect();
         let stm, pars;
         stm = 'select * from sources';
         pars = [];
@@ -12,12 +12,14 @@ async function getSources() {
         const res = await client.query(stm, pars);
         const rows = res.rows;
         logger.trace(`DB ==> ${rows.length}`)
-        client.release();
         return rows;
     }
     catch(err) {
         dblog.createLog('ERROR DB getSources', err);
         throw err;
+    }
+    finally {
+        client.release();
     }
 }
 
