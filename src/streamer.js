@@ -35,18 +35,25 @@ function streamFile( request, reply, filepath ) {
     return stream;
 }
 
-async function chunkFile(request, reply, filepath) {
-    const stream = fs.createReadStream(filepath, { highWaterMark: 1 * 1024/*, encoding: 'utf8'*/ });
-    reply.send(stream); // that should be enough
-    /*
-    stream.on('data', function(chunk) {
-        data += chunk;
-        console.log('chunk Data : ')
-        console.log(chunk);// your processing chunk logic will go here
+async function chunkFile(filepath) {
+    return new Promise((resolve, reject) => {
+        const buffer = [];
+        const stream = fs.createReadStream(filepath, { highWaterMark: 1 * 1e6 }); // 1Mb blocks
 
-    }).on('end', function() {
-        console.log('done chunking');
-    });*/
+        stream.on('data', (chunk) => {
+            // chunk è un Buffer di ~highWaterMark byte (l'ultimo può essere più piccolo)
+            buffer.push(chunk);
+            logger.trace(`received block ${chunk.length} bytes`)
+        });
+        stream.on('end', () => {
+            logger.trace(`done buffering ${buffer.length} blocks`)
+            resolve(buffer);
+        });
+        stream.on('error', (err) => {
+            console.error(err);
+            reject(err);
+        }); 
+    })
 }
 
 module.exports = {

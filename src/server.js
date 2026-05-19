@@ -5,6 +5,7 @@ const cookie = require('@fastify/cookie');
 const session = require('@fastify/session');
 const fastifyRange = require('fastify-range'); // needed to stream data
 const db = require('./db');
+const cache = require('./cache');
 const streamer = require('./streamer');
 
 // =============== FASTIFY =============== // 
@@ -164,10 +165,24 @@ fastify.register((instance, opts, done) => {
 
     instance.get('/chunk/song', async function(req, reply) {
         const songid = req?.query?.id;
-        const song = await db.getSongInfo(songid);
-        logger.trace(`Chunking ${song.fullpath}`);
-        //
-        return streamer.chunkFile(req, reply, song.fullpath);
+        const chunkIndex = req?.query?.chunkIndex ?? '1';
+        const chunkId = `${songid}:${chunkIndex}`;
+        logger.trace(`Chunking ${chunkId}`);
+
+        // cache fail: refresh whole song
+        if (!cache.has(chunkId))  {
+            const song = await db.getSongInfo(songid);
+            logger.trace(`Now caching ${JSON.stringify(song)}`);
+            const chunked = await streamer.chunkFile(song.fullpath);
+            logger.trace(`Now cached ${JSON.stringify(song)}`)
+            await cache.storeChunks(songid, chunked);
+            logger.trace(`Chunked ${chunkId}`);
+        }
+
+        // return buffer block
+        logger.trace(`Chunk cached ${chunkId}`);
+        const chunk = cache.get(chunkId);
+        return chunk;
     })
 
     instance.post('/user/password', async function(req, reply) {
@@ -179,6 +194,11 @@ fastify.register((instance, opts, done) => {
             return data;
         }
         return {}
+    })
+
+    instance.get('/user/me', async function(req, reply) {
+        const authuser = req.session.get('user');
+        return { username: authuser.username }
     })
 
     /*
