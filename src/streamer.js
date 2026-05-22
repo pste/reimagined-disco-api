@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const mm = require('music-metadata');
+const NodeID3 = require('node-id3').Promise;
 const logger = require('./logger');
 
 function streamFile( request, reply, filepath ) {
@@ -89,9 +90,22 @@ async function readId3(filepath) {
     }
 }
 
+async function writeId3(filepath, tags) {
+    const id3tags = {};
+    if (tags.title  !== undefined) { id3tags.title       = tags.title; }
+    if (tags.artist !== undefined) { id3tags.artist      = tags.artist; }
+    if (tags.album  !== undefined) { id3tags.album       = tags.album; }
+    if (tags.year   !== undefined) { id3tags.year        = String(tags.year); }
+    if (tags.genre  !== undefined) { id3tags.genre       = Array.isArray(tags.genre) ? tags.genre[0] : tags.genre; }
+    if (tags.track  !== undefined) { id3tags.trackNumber = tags.track?.of ? `${tags.track.no}/${tags.track.of}` : String(tags.track.no); }
+    if (tags.disk   !== undefined) { id3tags.partOfSet   = tags.disk?.of  ? `${tags.disk.no}/${tags.disk.of}`   : String(tags.disk.no); }
+    return NodeID3.update(id3tags, filepath);
+}
+
 module.exports = {
     streamFile,
     chunkFile,
     readMetadata,
     readId3,
+    writeId3,
 }

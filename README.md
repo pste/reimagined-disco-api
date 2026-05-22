@@ -54,6 +54,7 @@ All endpoints are prefixed with `/api`.
 | GET | `/api/stream/song` | Query: `id` (song_id) | Audio stream (1MB chunks) | Streams a song file with HTTP range support |
 | GET | `/api/chunk/song` | Query: `id` (song_id), `chunkIndex` (default: 1) | Chunk 1: `{ metadata: { totalChunks, filesize, bitrate, duration }, data }` — others: `{ data }` | Streams a song file as 1MB base64-encoded chunks. First chunk includes audio metadata. |
 | GET | `/api/song/id3` | Query: `id` (song_id) | `{ title, artist, album, year, genre, track, disk, bitrate }` | Returns ID3 tag data for a song |
+| POST | `/api/song/id3` | Query: `id` (song_id) — Body: `{ title?, artist?, album?, year?, genre?, track?, disk? }` | `{ ok: true }` | Updates ID3 tags on the audio file (only fields provided are modified) |
 
 ### User Management (Authenticated Routes)
 
