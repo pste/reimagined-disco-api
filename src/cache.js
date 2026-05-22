@@ -20,5 +20,9 @@ module.exports = {
             const key = `${songid}:${++idx}`
             cache.set(key, chunk);
         }
-    }
+    },
+    storeMetadata: (songid, metadata) => {
+        cache.set(`metadata:${songid}`, metadata, { size: 1 });
+    },
+    getMetadata: (songid) => cache.get(`metadata:${songid}`),
 }  

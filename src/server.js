@@ -144,6 +144,7 @@ fastify.register((instance, opts, done) => {
         return data;
     })
 
+    // update song stats
     instance.post('/stream/song', async function(req, reply) {
         const { song_id } = req.body;
         const user = req.session.get('user');
@@ -173,16 +174,25 @@ fastify.register((instance, opts, done) => {
         if (!cache.has(chunkId))  {
             const song = await db.getSongInfo(songid);
             logger.trace(`Now caching ${JSON.stringify(song)}`);
-            const chunked = await streamer.chunkFile(song.fullpath);
+            const [chunked, metadata] = await Promise.all([
+                streamer.chunkFile(song.fullpath),
+                streamer.readMetadata(song.fullpath)
+            ]);
             logger.trace(`Now cached ${JSON.stringify(song)}`)
             await cache.storeChunks(songid, chunked);
+            cache.storeMetadata(songid, metadata);
             logger.trace(`Chunked ${chunkId}`);
         }
 
         // return buffer block
         logger.trace(`Chunk cached ${chunkId}`);
         const chunk = cache.get(chunkId);
-        return chunk;
+        if (chunkIndex === '1') {
+            return { metadata: cache.getMetadata(songid), data: chunk.toString('base64') };
+        }
+        else {
+            return { data: chunk.toString('base64') };
+        }
     })
 
     instance.post('/user/password', async function(req, reply) {
