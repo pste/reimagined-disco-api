@@ -135,6 +135,13 @@ fastify.register((instance, opts, done) => {
         return data;
     })
 
+    instance.get('/song/id3', async function(req, reply) {
+        const songid = req?.query?.id;
+        const song = await db.getSongInfo(songid);
+        const data = await streamer.readId3(song.fullpath);
+        return data;
+    })
+
     instance.get('/search/songs', async function(req, reply) {
         const albumid = req?.query?.albumid;
         const title = req?.query?.title || '';

@@ -70,8 +70,28 @@ async function readMetadata(filepath) {
     }
 }
 
+async function readId3(filepath) {
+    try {
+        const { common, format } = await mm.parseFile(filepath, { duration: false, skipCovers: true });
+        return {
+            title:   common.title   ?? null,
+            artist:  common.artist  ?? null,
+            album:   common.album   ?? null,
+            year:    common.year    ?? null,
+            genre:   common.genre   ?? null,
+            track:   common.track   ?? null,
+            disk:    common.disk    ?? null,
+            bitrate: format.bitrate ?? null,
+        };
+    } catch(err) {
+        logger.error(err, 'readId3 error');
+        return null;
+    }
+}
+
 module.exports = {
     streamFile,
     chunkFile,
     readMetadata,
+    readId3,
 }

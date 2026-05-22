@@ -9,7 +9,7 @@ Built with Fastify and PostgreSQL, featuring automatic file scanning to import m
 - **Framework**: Fastify (Node.js)
 - **Database**: PostgreSQL
 - **Session Management**: Cookie-based sessions with `@fastify/session`
-- **ID3 Parsing**: node-id3
+- **ID3 Parsing**: node-id3, music-metadata
 - **Scheduling**: node-cron
 
 ## Getting Started
@@ -52,7 +52,8 @@ All endpoints are prefixed with `/api`.
 |--------|----------|------------|----------|-------------|
 | POST | `/api/stream/song` | Body: `{ song_id }` | `{ song_id, user_id, played, playcount }` | Updates song play statistics for current user |
 | GET | `/api/stream/song` | Query: `id` (song_id) | Audio stream (1MB chunks) | Streams a song file with HTTP range support |
-| GET | `/api/chunk/song` | Query: `id` (song_id) | File stream | Streams entire song file as chunks |
+| GET | `/api/chunk/song` | Query: `id` (song_id), `chunkIndex` (default: 1) | Chunk 1: `{ metadata: { totalChunks, filesize, bitrate, duration }, data }` — others: `{ data }` | Streams a song file as 1MB base64-encoded chunks. First chunk includes audio metadata. |
+| GET | `/api/song/id3` | Query: `id` (song_id) | `{ title, artist, album, year, genre, track, disk, bitrate }` | Returns ID3 tag data for a song |
 
 ### User Management (Authenticated Routes)
 
