@@ -99,8 +99,11 @@ async function writeId3(filepath, tags) {
     if (tags.genre  != null) { id3tags.genre       = Array.isArray(tags.genre) ? tags.genre[0] : tags.genre; }
     if (tags.track?.no != null) { id3tags.trackNumber = tags.track.of ? `${tags.track.no}/${tags.track.of}` : String(tags.track.no); }
     if (tags.disk?.no  != null) { id3tags.partOfSet   = tags.disk.of  ? `${tags.disk.no}/${tags.disk.of}`   : String(tags.disk.no); }
+    logger.trace(`writeId3 ${filepath}`, id3tags);
     try {
-        return await NodeID3.update(id3tags, filepath);
+        const result = await NodeID3.update(id3tags, filepath);
+        logger.trace(`writeId3 done ${filepath}`);
+        return result;
     } catch(err) {
         logger.error(err, 'writeId3 error');
         throw err;
