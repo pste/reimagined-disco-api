@@ -179,20 +179,19 @@ fastify.register((instance, opts, done) => {
                 streamer.readMetadata(song.fullpath)
             ]);
             logger.trace(`Now cached ${JSON.stringify(song)}`)
-            await cache.storeChunks(songid, chunked);
-            cache.storeMetadata(songid, metadata);
+            const totalChunks = await cache.storeChunks(songid, chunked);
+            cache.storeMetadata(songid, { ...metadata, totalChunks });
             logger.trace(`Chunked ${chunkId}`);
         }
 
         // return buffer block
         logger.trace(`Chunk cached ${chunkId}`);
         const chunk = cache.get(chunkId);
+        const data = chunk ? chunk.toString('base64') : null;
         if (chunkIndex === '1') {
-            return { metadata: cache.getMetadata(songid), data: chunk.toString('base64') };
+            return { metadata: cache.getMetadata(songid), data };
         }
-        else {
-            return { data: chunk.toString('base64') };
-        }
+        return { data };
     })
 
     instance.post('/user/password', async function(req, reply) {
