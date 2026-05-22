@@ -145,8 +145,12 @@ fastify.register((instance, opts, done) => {
     instance.post('/song/id3', async function(req, reply) {
         const songid = req?.query?.id;
         const song = await db.getSongInfo(songid);
-        await streamer.writeId3(song.fullpath, req.body);
-        return { ok: true };
+        try {
+            await streamer.writeId3(song.fullpath, req.body);
+            return { ok: true };
+        } catch(err) {
+            return reply.status(403).send({ error: 'Cannot write to file: ' + err.message });
+        }
     })
 
     instance.get('/search/songs', async function(req, reply) {
