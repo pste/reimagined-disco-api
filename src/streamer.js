@@ -1,5 +1,5 @@
 const fs = require('node:fs');
-const NodeID3 = require('node-id3').Promise;
+const mm = require('music-metadata');
 const logger = require('./logger');
 
 function streamFile( request, reply, filepath ) {
@@ -59,13 +59,14 @@ async function chunkFile(filepath) {
 
 async function readMetadata(filepath) {
     try {
-        const tags = await NodeID3.read(filepath, { noRaw: true, include: ['TLEN'] });
-        return {
-            duration: tags.length ? parseInt(tags.length, 10) : null
-        };
+        const filesize = fs.statSync(filepath).size;
+        const { format } = await mm.parseFile(filepath, { duration: false });
+        const bitrate = format.bitrate ?? null;
+        const duration = bitrate ? Math.round((filesize * 8) / bitrate) : null;
+        return { filesize, bitrate, duration };
     } catch(err) {
         logger.error(err, 'readMetadata error');
-        return { duration: null };
+        return { filesize: null, bitrate: null };
     }
 }
 
