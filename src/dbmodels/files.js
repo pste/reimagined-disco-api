@@ -62,6 +62,11 @@ async function removeFile(song_id) {
         pars = [song_id];
         logger.trace(pars, `DB: ${stm}`);
         await client.query(stm, pars);
+        // delete user stats
+        stm = 'delete from user_stats where song_id=$1';
+        pars = [song_id];
+        logger.trace(pars, `DB: ${stm}`);
+        await client.query(stm, pars);
         // delete song
         stm = 'delete from songs where song_id=$1';
         pars = [song_id];
