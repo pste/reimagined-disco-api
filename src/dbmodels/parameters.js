@@ -22,7 +22,25 @@ async function getParameters() {
     }
 }
 
+async function saveParameters(cronScan) {
+    const client = await pool.connect();
+    try {
+        const stm = 'update parameters set "cronScan"=$1 where param_id=1';
+        const pars = [cronScan];
+        logger.trace(pars, `DB: ${stm}`);
+        await client.query(stm, pars);
+    }
+    catch(err) {
+        dblog.createLog('ERROR DB saveParameters', err);
+        throw err;
+    }
+    finally {
+        client.release();
+    }
+}
+
 //
 module.exports = {
     getParameters,
+    saveParameters,
 }

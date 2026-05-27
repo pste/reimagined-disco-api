@@ -7,6 +7,7 @@ const fastifyRange = require('fastify-range'); // needed to stream data
 const db = require('./db');
 const cache = require('./cache');
 const streamer = require('./streamer');
+const params = require('./parameters');
 
 // =============== FASTIFY =============== // 
 
@@ -226,6 +227,19 @@ fastify.register((instance, opts, done) => {
         return {}
     })
 
+    instance.get('/parameters', async function(req, reply) {
+        logger.trace(`/parameters`);
+        const data = await db.getParameters();
+        return data;
+    })
+
+    instance.post('/parameters', async function(req, reply) {
+        const { cronScan } = req.body;
+        logger.trace(`/parameters [cronScan:${cronScan}]`);
+        await db.saveParameters(cronScan);
+        return { ok: true };
+    })
+
     instance.get('/user/me', async function(req, reply) {
         const authuser = req.session.get('user');
         return { username: authuser.username }
@@ -243,7 +257,67 @@ fastify.register((instance, opts, done) => {
     done()
 }, { prefix: '/api' });
 
-// 
+// INTERNAL ROUTES — bearer token auth, used by the jobs pod
+fastify.register((instance, opts, done) => {
+
+    instance.addHook('preHandler', (req, reply, next) => {
+        const auth = req.headers['authorization'];
+        if (auth === `Bearer ${process.env.BEARER_TOKEN}`) {
+            next();
+        }
+        else {
+            logger.error('internal: 401 - invalid bearer token');
+            reply.status(401).send({ error: '401 - unauthorized' });
+        }
+    });
+
+    // jobs
+    instance.post('/jobs/claim', async (req, reply) => {
+        return db.claimNextJob(); // returns null (no pending job) or job object
+    });
+
+    instance.patch('/jobs/:id', async (req, reply) => {
+        const { id } = req.params;
+        const { status, result } = req.body;
+        await db.updateJobStatus(id, status, result);
+        return { ok: true };
+    });
+
+    // scan support
+    instance.get('/scan/basedir', async (req, reply) => {
+        const basedir = await params.baseDir();
+        return { basedir };
+    });
+
+    instance.get('/scan/files', async (req, reply) => {
+        return db.getFiles();
+    });
+
+    instance.post('/scan/song', async (req, reply) => {
+        const fileinfo = req.body;
+        // Reconstruct Buffer from JSON-serialized form ({type:'Buffer',data:[...]})
+        if (fileinfo.tags?.image?.imageBuffer) {
+            fileinfo.tags.image.imageBuffer = Buffer.from(fileinfo.tags.image.imageBuffer);
+        }
+        await db.updateSong(fileinfo);
+        return { ok: true };
+    });
+
+    instance.delete('/scan/song/:id', async (req, reply) => {
+        const { id } = req.params;
+        await db.removeFile(id);
+        return { ok: true };
+    });
+
+    instance.post('/scan/cleanup', async (req, reply) => {
+        await db.clearEmptyAlbums();
+        return { ok: true };
+    });
+
+    done();
+}, { prefix: '/api' });
+
+//
 module.exports.run = () => {
     fastify.listen( { port: process.env.PORT, host: '0.0.0.0' }, function(err) {
         if (err) {

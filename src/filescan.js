@@ -4,6 +4,7 @@ const NodeID3 = require('node-id3').Promise;
 const cron = require('node-cron');
 const logger = require('./logger');
 const db = require('./db');
+const dblog = require('./dbmodels/logs');
 const params = require('./parameters');
 
 /* 
@@ -62,19 +63,6 @@ async function filedetails(basedir, parentpath, filename) {
         birthtime: stats.birthtime,
     };
 }
-/**
- * This function check if the filesystem item and the database item are the same. 
- * Comparison is made just checking the relative path. It can be improved using atime, ctime, mtime, size properties (TODO)
- * @param {*} fsItem - a file on the disk
- * @param {*} dbItem - a file saved on the db
- * @returns bool
- */
-function isSameFile(fsItem, dbItem) {
-    const dbpath = path.join(dbItem.basedir, dbItem.file_path, dbItem.file_name);
-    const fspath = path.join(fsItem.basedir, fsItem.parentpath, fsItem.filename);
-    if (dbpath === fspath) return true;
-    return false;
-}
 
 /**
  * This function at first reads all of the files in the given folder and, for each file found, get its properties (atime, ctime, ...)
@@ -105,33 +93,30 @@ async function fastscan( forceFullScan ) {
         // scan db
         logger.info(`Start scanning on db ...`);
         const filesdb = await db.getFiles();
+        const filesdbMap = new Map(
+            filesdb.map(f => [path.join(f.basedir, f.file_path, f.file_name), f])
+        );
         logger.info(`FastScan found ${filesdb.length} db files`);
 
         // upsert new items
         logger.info(`DB updating ...`);
         for await (const diskfile of filesdisk) {
-            // check if is new
-            const idx = filesdb.findIndex(dbfile => isSameFile(diskfile, dbfile)); // TODO SLOW
-            if (forceFullScan === true || idx < 0) {
+            const dbfile = filesdbMap.get(diskfile.fullpath);
+            if (forceFullScan === true || !dbfile) {
                 diskfile.tags = await readid3(diskfile.fullpath);
-                // works on db - update
                 logger.trace(`DB UPDATE: ${diskfile.fullpath}`);
                 await db.updateSong(diskfile);
             }
-            // remove just managed item to accelerate next db findings
-            if (idx >= 0) {
-                filesdb.splice(idx, 1);
+            if (dbfile) {
+                filesdbMap.delete(diskfile.fullpath);
             }
         }
 
         // scan removed items
         logger.info(`DB cleaning ...`);
-        for await (let dbfile of filesdb) {
-            // works on db - delete
-            if (filesdisk.findIndex(diskfile => isSameFile(diskfile, dbfile)) < 0) {
-                logger.trace(dbfile, "DB REMOVE");
-                await db.removeFile(dbfile.song_id);
-            }
+        for await (const dbfile of filesdbMap.values()) {
+            logger.trace(dbfile, "DB REMOVE");
+            await db.removeFile(dbfile.song_id);
         }
         await db.clearEmptyAlbums();
         //

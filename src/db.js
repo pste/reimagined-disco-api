@@ -9,6 +9,7 @@ const files = require('./dbmodels/files');
 const sources = require('./dbmodels/sources');
 const pars = require('./dbmodels/parameters');
 const users = require('./dbmodels/users');
+const jobs = require('./dbmodels/jobs');
 
 const logger = require('./logger');
 const utils = require('./utils');
@@ -181,6 +182,10 @@ async function getParameters() {
     return await pars.getParameters();
 }
 
+async function saveParameters(cronScan) {
+    return await pars.saveParameters(cronScan);
+}
+
 async function getUser(user, pwd) {
     const pwdhash = crypto.createHash('sha256').update(pwd).digest('hex');
     return await users.getUser(user, pwdhash);
@@ -189,6 +194,16 @@ async function getUser(user, pwd) {
 async function savePassword(userid, pwd) {
     const pwdhash = crypto.createHash('sha256').update(pwd).digest('hex');
     return await users.savePassword(userid, pwdhash);
+}
+
+/////////////////////////////////////////////////////////////////
+
+async function claimNextJob() {
+    return await jobs.claimNextJob();
+}
+
+async function updateJobStatus(job_id, status, result) {
+    return await jobs.updateJobStatus(job_id, status, result);
 }
 
 /////////////////////////////////////////////////////////////////
@@ -209,7 +224,11 @@ module.exports = {
     clearEmptyAlbums,
     // generic:
     getParameters,
+    saveParameters,
     getUser,
     savePassword,
     updateSongStats,
+    // jobs
+    claimNextJob,
+    updateJobStatus,
 }
