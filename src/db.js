@@ -10,6 +10,7 @@ const sources = require('./dbmodels/sources');
 const pars = require('./dbmodels/parameters');
 const users = require('./dbmodels/users');
 const jobs = require('./dbmodels/jobs');
+const user_id3 = require('./dbmodels/user_id3');
 
 const logger = require('./logger');
 const utils = require('./utils');
@@ -219,6 +220,24 @@ async function updateJobStatus(job_id, status, result) {
 }
 
 /////////////////////////////////////////////////////////////////
+
+async function upsertUserTag(song_id, tags) {
+    return await user_id3.upsertUserTag(song_id, tags);
+}
+
+async function getPendingTags() {
+    return await user_id3.getPendingTags();
+}
+
+async function deleteUserTag(song_id) {
+    return await user_id3.deleteUserTag(song_id);
+}
+
+async function setUserTagError(song_id) {
+    return await user_id3.setUserTagError(song_id);
+}
+
+/////////////////////////////////////////////////////////////////
 module.exports = {
     // web
     getCollection,
@@ -246,4 +265,9 @@ module.exports = {
     getJobs,
     claimNextJob,
     updateJobStatus,
+    // user id3
+    upsertUserTag,
+    getPendingTags,
+    deleteUserTag,
+    setUserTagError,
 }

@@ -145,16 +145,19 @@ fastify.register((instance, opts, done) => {
 
     instance.post('/song/id3', async function(req, reply) {
         const songid = req?.query?.id;
-        const song = await db.getSongInfo(songid);
-        logger.trace(`/song/id3 [${songid}] ${song.fullpath}`);
-        try {
-            await streamer.writeId3(song.fullpath, req.body);
-            logger.trace(`/song/id3 [${songid}] write ok`);
-            return { ok: true };
-        } catch(err) {
-            logger.error(err, `/song/id3 [${songid}] write failed`);
-            return reply.status(403).send({ error: 'Cannot write to file: ' + err.message });
-        }
+        logger.trace(`/song/id3 [${songid}] queuing id3write job`);
+        const tags = {
+            title:    req.body.title    ?? null,
+            album:    req.body.album    ?? null,
+            artist:   req.body.artist   ?? null,
+            year:     req.body.year     ? parseInt(req.body.year) : null,
+            genre:    req.body.genre    ?? null,
+            track_nr: req.body.track?.no ? parseInt(req.body.track.no) : null,
+            disc_nr:  req.body.disk?.no  ? parseInt(req.body.disk.no) : null,
+        };
+        await db.upsertUserTag(songid, tags);
+        await db.createJob('id3write', new Date());
+        return { ok: true };
     })
 
     instance.get('/search/songs', async function(req, reply) {
@@ -326,6 +329,28 @@ fastify.register((instance, opts, done) => {
 
     instance.post('/scan/cleanup', async (req, reply) => {
         await db.clearEmptyAlbums();
+        return { ok: true };
+    });
+
+    instance.get('/scan/song/:id', async (req, reply) => {
+        const { id } = req.params;
+        const song = await db.getSongInfo(id);
+        return { fullpath: song.fullpath };
+    });
+
+    instance.get('/scan/id3/pending', async (req, reply) => {
+        return db.getPendingTags();
+    });
+
+    instance.delete('/scan/id3/:song_id', async (req, reply) => {
+        const { song_id } = req.params;
+        await db.deleteUserTag(song_id);
+        return { ok: true };
+    });
+
+    instance.patch('/scan/id3/:song_id', async (req, reply) => {
+        const { song_id } = req.params;
+        await db.setUserTagError(song_id);
         return { ok: true };
     });
 

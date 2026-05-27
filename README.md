@@ -9,8 +9,7 @@ Built with Fastify and PostgreSQL, featuring automatic file scanning to import m
 - **Framework**: Fastify (Node.js)
 - **Database**: PostgreSQL
 - **Session Management**: Cookie-based sessions with `@fastify/session`
-- **ID3 Parsing**: node-id3, music-metadata
-- **Scheduling**: node-cron
+- **ID3 Reading**: node-id3, music-metadata (used for `GET /api/song/id3`)
 
 ## Getting Started
 
@@ -54,7 +53,15 @@ All endpoints are prefixed with `/api`.
 | GET | `/api/stream/song` | Query: `id` (song_id) | Audio stream (1MB chunks) | Streams a song file with HTTP range support |
 | GET | `/api/chunk/song` | Query: `id` (song_id), `chunkIndex` (default: 1) | Chunk 1: `{ metadata: { totalChunks, filesize, bitrate, duration }, data }` — others: `{ data }` | Streams a song file as 1MB base64-encoded chunks. First chunk includes audio metadata. |
 | GET | `/api/song/id3` | Query: `id` (song_id) | `{ title, artist, album, year, genre, track, disk, bitrate }` | Returns ID3 tag data for a song |
-| POST | `/api/song/id3` | Query: `id` (song_id) — Body: `{ title?, artist?, album?, year?, genre?, track?, disk? }` | `{ ok: true }` | Updates ID3 tags on the audio file (only fields provided are modified) |
+| POST | `/api/song/id3` | Query: `id` (song_id) — Body: `{ title?, artist?, album?, year?, genre?, track?, disk? }` | `{ ok: true }` | Queues an async `id3write` job; saves edits to `user_id3` table; NULL fields are skipped when writing to file |
+
+### Jobs (Authenticated Routes)
+
+| Method | Endpoint | Parameters | Response | Description |
+|--------|----------|------------|----------|-------------|
+| GET | `/api/jobs` | None | Array of jobs | Returns all jobs (sorted by scheduled time desc) |
+| POST | `/api/jobs` | Body: `{ name, when }` | Job object | Creates a new pending job |
+| DELETE | `/api/jobs/:id` | Path: `id` (job_id) | `{ ok: true }` | Deletes a job |
 
 ### User Management (Authenticated Routes)
 
@@ -75,5 +82,4 @@ All endpoints are prefixed with `/api`.
 - `PORT` - Server port (default: from .env)
 - `SESSION_SECRET` - Secret for session encryption
 - `SESSION_TIMEOUTSECS` - Session timeout in seconds
-- `BOOTSCAN` - Set to "yes" to scan files on server boot
 - `DATABASE_URL` - PostgreSQL connection string
