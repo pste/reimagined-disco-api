@@ -249,6 +249,11 @@ fastify.register((instance, opts, done) => {
         return db.getJobs();
     })
 
+    instance.post('/jobs', async function(req, reply) {
+        const { name, when } = req.body;
+        return db.createJob(name, when);
+    })
+
     /*
     instance.get('/search/song', async function(req, reply) {
         const id = req.query.id;
