@@ -198,6 +198,10 @@ async function savePassword(userid, pwd) {
 
 /////////////////////////////////////////////////////////////////
 
+async function getJobs() {
+    return await jobs.getJobs();
+}
+
 async function claimNextJob() {
     return await jobs.claimNextJob();
 }
@@ -229,6 +233,7 @@ module.exports = {
     savePassword,
     updateSongStats,
     // jobs
+    getJobs,
     claimNextJob,
     updateJobStatus,
 }

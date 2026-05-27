@@ -2,6 +2,23 @@ const logger = require('../logger');
 const dblog = require('./logs');
 const pool = require('./dbpool');
 
+async function getJobs() {
+    const client = await pool.connect();
+    try {
+        const stm = 'SELECT * FROM jobs ORDER BY "when" DESC';
+        logger.trace('DB: getJobs');
+        const res = await client.query(stm);
+        return res.rows;
+    }
+    catch(err) {
+        dblog.createLog('ERROR DB getJobs', err);
+        throw err;
+    }
+    finally {
+        client.release();
+    }
+}
+
 // Atomically claim the oldest pending job, marking it as running.
 async function claimNextJob() {
     const client = await pool.connect();
@@ -9,7 +26,11 @@ async function claimNextJob() {
         const stm = `
             UPDATE jobs SET status='running', started=NOW()
             WHERE job_id = (
-                SELECT job_id FROM jobs WHERE status='pending' ORDER BY "when" ASC LIMIT 1
+                SELECT job_id FROM jobs
+                WHERE status='pending'
+                AND name NOT IN (SELECT name FROM jobs WHERE status='running')
+                ORDER BY "when" ASC
+                LIMIT 1
             )
             RETURNING *`;
         logger.trace('DB: claimNextJob');
@@ -42,4 +63,4 @@ async function updateJobStatus(job_id, status, result) {
     }
 }
 
-module.exports = { claimNextJob, updateJobStatus };
+module.exports = { getJobs, claimNextJob, updateJobStatus };

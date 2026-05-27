@@ -245,6 +245,10 @@ fastify.register((instance, opts, done) => {
         return { username: authuser.username }
     })
 
+    instance.get('/jobs', async function(req, reply) {
+        return db.getJobs();
+    })
+
     /*
     instance.get('/search/song', async function(req, reply) {
         const id = req.query.id;
