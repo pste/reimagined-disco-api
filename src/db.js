@@ -135,8 +135,8 @@ async function getFiles() {
 }
 
 // filescan
-async function removeFile() {
-    return await files.removeFile();
+async function removeFile(song_id) {
+    return await files.removeFile(song_id);
 }
 
 // filescan 
