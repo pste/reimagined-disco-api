@@ -254,6 +254,12 @@ fastify.register((instance, opts, done) => {
         return db.createJob(name, when);
     })
 
+    instance.delete('/jobs/:id', async function(req, reply) {
+        const { id } = req.params;
+        await db.deleteJob(id);
+        return { ok: true };
+    })
+
     /*
     instance.get('/search/song', async function(req, reply) {
         const id = req.query.id;

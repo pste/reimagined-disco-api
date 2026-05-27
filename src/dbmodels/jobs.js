@@ -2,6 +2,23 @@ const logger = require('../logger');
 const dblog = require('./logs');
 const pool = require('./dbpool');
 
+async function deleteJob(job_id) {
+    const client = await pool.connect();
+    try {
+        const stm = 'DELETE FROM jobs WHERE job_id=$1';
+        const pars = [job_id];
+        logger.trace(pars, 'DB: deleteJob');
+        await client.query(stm, pars);
+    }
+    catch(err) {
+        dblog.createLog('ERROR DB deleteJob', err);
+        throw err;
+    }
+    finally {
+        client.release();
+    }
+}
+
 async function createJob(name, when) {
     const client = await pool.connect();
     try {
@@ -81,4 +98,4 @@ async function updateJobStatus(job_id, status, result) {
     }
 }
 
-module.exports = { createJob, getJobs, claimNextJob, updateJobStatus };
+module.exports = { deleteJob, createJob, getJobs, claimNextJob, updateJobStatus };
