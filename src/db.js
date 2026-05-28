@@ -203,10 +203,6 @@ async function deleteJob(job_id) {
     return await jobs.deleteJob(job_id);
 }
 
-async function createJob(name, when) {
-    return await jobs.createJob(name, when);
-}
-
 async function getJobs() {
     return await jobs.getJobs();
 }
@@ -265,7 +261,6 @@ module.exports = {
     updateSongStats,
     // jobs
     deleteJob,
-    createJob,
     getJobs,
     claimNextJob,
     updateJobStatus,

@@ -19,24 +19,6 @@ async function deleteJob(job_id) {
     }
 }
 
-async function createJob(name, when) {
-    const client = await pool.connect();
-    try {
-        const stm = 'INSERT INTO jobs (name, "when", status) VALUES ($1, $2, \'pending\') RETURNING *';
-        const pars = [name, when];
-        logger.trace(pars, 'DB: createJob');
-        const res = await client.query(stm, pars);
-        return res.rows[0];
-    }
-    catch(err) {
-        dblog.createLog('ERROR DB createJob', err);
-        throw err;
-    }
-    finally {
-        client.release();
-    }
-}
-
 async function getJobs() {
     const client = await pool.connect();
     try {
@@ -122,4 +104,4 @@ async function upsertPendingJob(name, when) {
     }
 }
 
-module.exports = { deleteJob, createJob, getJobs, claimNextJob, updateJobStatus, upsertPendingJob };
+module.exports = { deleteJob, getJobs, claimNextJob, updateJobStatus, upsertPendingJob };

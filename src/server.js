@@ -156,7 +156,7 @@ fastify.register((instance, opts, done) => {
             disc_nr:  req.body.disk?.no  ? parseInt(req.body.disk.no) : null,
         };
         await db.upsertUserTag(songid, tags);
-        await db.createJob('id3write', new Date());
+        await db.upsertPendingJob('id3write', new Date());
         return { ok: true };
     })
 
@@ -254,7 +254,7 @@ fastify.register((instance, opts, done) => {
 
     instance.post('/jobs', async function(req, reply) {
         const { name, when } = req.body;
-        return db.createJob(name, when);
+        return db.upsertPendingJob(name, when);
     })
 
     instance.delete('/jobs/:id', async function(req, reply) {
