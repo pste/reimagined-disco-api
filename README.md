@@ -60,8 +60,15 @@ All endpoints are prefixed with `/api`.
 | Method | Endpoint | Parameters | Response | Description |
 |--------|----------|------------|----------|-------------|
 | GET | `/api/jobs` | None | Array of jobs | Returns all jobs (sorted by scheduled time desc) |
-| POST | `/api/jobs` | Body: `{ name, when }` | Job object | Creates a new pending job |
+| POST | `/api/jobs` | Body: `{ name, when }` | Job object | Creates a pending job, or updates the `when` of the existing pending job with the same name (upsert — only one pending job per name is allowed) |
 | DELETE | `/api/jobs/:id` | Path: `id` (job_id) | `{ ok: true }` | Deletes a job |
+
+### Configuration (Authenticated Routes)
+
+| Method | Endpoint | Parameters | Response | Description |
+|--------|----------|------------|----------|-------------|
+| GET | `/api/parameters` | None | Array with `{ cronRequeue, cacheTTLDays }` | Returns app parameters |
+| POST | `/api/parameters` | Body: `{ cronRequeue, cacheTTLDays }` | `{ ok: true }` | Saves app parameters: scan requeue cron expression and IndexedDB cache TTL (days) |
 
 ### User Management (Authenticated Routes)
 
