@@ -63,6 +63,7 @@ async function claimNextJob() {
             WHERE job_id = (
                 SELECT job_id FROM jobs
                 WHERE status='pending'
+                AND "when" <= NOW()
                 AND name NOT IN (SELECT name FROM jobs WHERE status='running')
                 ORDER BY "when" ASC
                 LIMIT 1
@@ -98,4 +99,27 @@ async function updateJobStatus(job_id, status, result) {
     }
 }
 
-module.exports = { deleteJob, createJob, getJobs, claimNextJob, updateJobStatus };
+async function upsertPendingJob(name, when) {
+    const client = await pool.connect();
+    try {
+        const stm = `
+            INSERT INTO jobs (name, "when", status)
+            VALUES ($1, $2, 'pending')
+            ON CONFLICT (name) WHERE status = 'pending'
+            DO UPDATE SET "when" = EXCLUDED."when"
+            RETURNING *`;
+        const pars = [name, when];
+        logger.trace(pars, `DB: upsertPendingJob`);
+        const res = await client.query(stm, pars);
+        return res.rows[0];
+    }
+    catch(err) {
+        dblog.createLog('ERROR DB upsertPendingJob', err);
+        throw err;
+    }
+    finally {
+        client.release();
+    }
+}
+
+module.exports = { deleteJob, createJob, getJobs, claimNextJob, updateJobStatus, upsertPendingJob };

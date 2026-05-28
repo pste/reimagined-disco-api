@@ -219,6 +219,10 @@ async function updateJobStatus(job_id, status, result) {
     return await jobs.updateJobStatus(job_id, status, result);
 }
 
+async function upsertPendingJob(name, when) {
+    return await jobs.upsertPendingJob(name, when);
+}
+
 /////////////////////////////////////////////////////////////////
 
 async function upsertUserTag(song_id, tags) {
@@ -265,6 +269,7 @@ module.exports = {
     getJobs,
     claimNextJob,
     updateJobStatus,
+    upsertPendingJob,
     // user id3
     upsertUserTag,
     getPendingTags,

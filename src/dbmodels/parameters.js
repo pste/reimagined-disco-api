@@ -22,11 +22,11 @@ async function getParameters() {
     }
 }
 
-async function saveParameters(cronScan) {
+async function saveParameters(cronScan, cronRequeue) {
     const client = await pool.connect();
     try {
-        const stm = 'update parameters set "cronScan"=$1 where param_id=1';
-        const pars = [cronScan];
+        const stm = 'update parameters set "cronScan"=$1, "cronRequeue"=$2 where param_id=1';
+        const pars = [cronScan, cronRequeue];
         logger.trace(pars, `DB: ${stm}`);
         await client.query(stm, pars);
     }

@@ -115,16 +115,16 @@ fastify.register((instance, opts, done) => {
         return data;
     })
 
+    instance.get('/sources', async function(req, reply) {
+        logger.trace(`/sources`);
+        const data = await db.getSources();
+        return data;
+    })
+
     instance.get('/search/cover', async (req, reply) => {
         const album_id = req?.query?.album_id;
         logger.trace(`/search/cover [${album_id}]`);
         const data = await db.getCover(album_id);
-        return data;
-    })
-
-    instance.get('/sources', async function(req, reply) {
-        logger.trace(`/sources`);
-        const data = await db.getSources();
         return data;
     })
 
@@ -237,9 +237,9 @@ fastify.register((instance, opts, done) => {
     })
 
     instance.post('/parameters', async function(req, reply) {
-        const { cronScan } = req.body;
-        logger.trace(`/parameters [cronScan:${cronScan}]`);
-        await db.saveParameters(cronScan);
+        const { cronScan, cronRequeue } = req.body;
+        logger.trace(`/parameters [cronScan:${cronScan}] [cronRequeue:${cronRequeue}]`);
+        await db.saveParameters(cronScan, cronRequeue);
         return { ok: true };
     })
 
@@ -352,6 +352,15 @@ fastify.register((instance, opts, done) => {
         const { song_id } = req.params;
         await db.setUserTagError(song_id);
         return { ok: true };
+    });
+
+    instance.get('/parameters/scan', async (req, reply) => {
+        return db.getParameters();
+    });
+
+    instance.post('/jobs/scan', async (req, reply) => {
+        const { name, when } = req.body;
+        return db.upsertPendingJob(name, when);
     });
 
     done();
