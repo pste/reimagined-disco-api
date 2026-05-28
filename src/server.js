@@ -237,9 +237,9 @@ fastify.register((instance, opts, done) => {
     })
 
     instance.post('/parameters', async function(req, reply) {
-        const { cronScan, cronRequeue } = req.body;
-        logger.trace(`/parameters [cronScan:${cronScan}] [cronRequeue:${cronRequeue}]`);
-        await db.saveParameters(cronScan, cronRequeue);
+        const { cronRequeue, cacheTTLDays } = req.body;
+        logger.trace(`/parameters [cronRequeue:${cronRequeue}] [cacheTTLDays:${cacheTTLDays}]`);
+        await db.saveParameters(cronRequeue, cacheTTLDays);
         return { ok: true };
     })
 

@@ -13,16 +13,6 @@ async function baseDir() {
 }
 
 //
-async function scanJobDefinition() {
-    const pars = await db.getParameters();
-    if (pars.length > 0) {
-        return pars[0].cronScan;
-    }
-    return '0 23 * * 1,5'; // some default: at 23:00 on Monday and Friday.
-}
-
-//
 module.exports = {
     baseDir,
-    scanJobDefinition
 }

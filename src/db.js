@@ -183,8 +183,8 @@ async function getParameters() {
     return await pars.getParameters();
 }
 
-async function saveParameters(cronScan) {
-    return await pars.saveParameters(cronScan);
+async function saveParameters(cronRequeue, cacheTTLDays) {
+    return await pars.saveParameters(cronRequeue, cacheTTLDays);
 }
 
 async function getUser(user, pwd) {
