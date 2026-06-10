@@ -195,6 +195,24 @@ async function upsertCover(album_id, image_buffer) {
     }
 }
 
+// Memorizza il release-group MBID sull'album: la prossima ricerca cover salta la search testuale.
+async function setReleaseGroup(album_id, mbid) {
+    const client = await pool.connect();
+    try {
+        const stm = 'update albums set mb_release_group_id=$2 where album_id=$1';
+        const pars = [album_id, mbid];
+        logger.trace(pars, `DB: ${stm}`);
+        await client.query(stm, pars);
+    }
+    catch(err) {
+        dblog.createLog('ERROR DB setReleaseGroup', err);
+        throw err;
+    }
+    finally {
+        client.release();
+    }
+}
+
 async function clearEmptyAlbums() {
     const client = await pool.connect();
     try {
@@ -231,6 +249,7 @@ module.exports = {
     getAlbum,
     countAlbums,
     upsertAlbum,
+    setReleaseGroup,
     clearEmptyAlbums,
     getCover,
     upsertCover,

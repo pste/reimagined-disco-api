@@ -22,7 +22,7 @@ async function getFiles() {
     }
 }
 
-async function upsertFile(song_id, basedir, file_path, file_name, modified) {
+async function upsertFile(song_id, basedir, file_path, file_name, modified, bitrate) {
     const client = await pool.connect();
     try {
         let stm, pars, res;
@@ -33,10 +33,10 @@ async function upsertFile(song_id, basedir, file_path, file_name, modified) {
         res = await client.query(stm, pars);
         const sources = res.rows[0]
         //
-        stm = 'insert into files (source_id, song_id, file_path, file_name, modified) values ($1,$2,$3,$4,$5) \
-                    on conflict(source_id, file_path, file_name) do update set song_id=$2, modified=$5 \
+        stm = 'insert into files (source_id, song_id, file_path, file_name, modified, bitrate) values ($1,$2,$3,$4,$5,$6) \
+                    on conflict(source_id, file_path, file_name) do update set song_id=$2, modified=$5, bitrate=$6 \
                     returning *';
-        pars = [sources.source_id, song_id, file_path, file_name, modified];
+        pars = [sources.source_id, song_id, file_path, file_name, modified, bitrate ?? null];
         logger.trace(pars, `DB: ${stm}`);
         res = await client.query(stm, pars);
         const rows = res.rows;

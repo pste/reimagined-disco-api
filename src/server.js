@@ -8,6 +8,7 @@ const db = require('./db');
 const cache = require('./cache');
 const streamer = require('./streamer');
 const params = require('./parameters');
+const coverFetch = require('./coverFetch');
 
 // =============== FASTIFY =============== // 
 
@@ -100,15 +101,6 @@ fastify.register((instance, opts, done) => {
         }
     })
 
-    /*
-    instance.get('/search/artists', async function(req, reply) {
-        const name = req?.query?.name || '';
-        logger.trace(`/search/artists ${name}`);
-        //
-        const data = await db.getArtists(name);
-        return reply.send(data);
-    })*/
-
     instance.get('/collection', async (req, reply) => {
         logger.trace(`/collection`);
         const data = await db.getCollection();
@@ -136,28 +128,89 @@ fastify.register((instance, opts, done) => {
         return data;
     })
 
-    instance.get('/song/id3', async function(req, reply) {
-        const songid = req?.query?.id;
-        const song = await db.getSongInfo(songid);
-        const data = await streamer.readId3(song.fullpath);
-        return data;
+    // Save dell'editor album: write-through su songs/albums (DB = stato desiderato,
+    // subito coerente per editor e Collection) + coda user_id3 + un solo job id3write.
+    // Ritorna album_id (può cambiare se il rename atterra su un altro album row).
+    instance.post('/album/id3', async function(req, reply) {
+        const { album_id, album, artist, year, genre, tracks } = req.body;
+        logger.trace(`/album/id3 [${album_id}] queuing id3write job`);
+        if (!album_id || !Array.isArray(tracks) || tracks.length === 0) {
+            return reply.status(400).send({ error: 'album_id and tracks required' });
+        }
+        const meta = {
+            album:  album  || null,
+            artist: artist || null,
+            year:   year   ? parseInt(year) : null,
+            genre:  genre  || null,
+        };
+        const trackList = tracks.map((t) => ({
+            song_id:  t.song_id,
+            title:    t.title ?? null,
+            track_nr: t.track_nr != null ? parseInt(t.track_nr) : null,
+            disc_nr:  t.disc_nr  != null ? parseInt(t.disc_nr)  : null,
+        }));
+        const newAlbumId = await db.saveAlbumTags(album_id, meta, trackList);
+        await db.upsertPendingJob('id3write', new Date());
+        return { ok: true, album_id: newAlbumId };
     })
 
-    instance.post('/song/id3', async function(req, reply) {
-        const songid = req?.query?.id;
-        logger.trace(`/song/id3 [${songid}] queuing id3write job`);
-        const tags = {
-            title:    req.body.title    ?? null,
-            album:    req.body.album    ?? null,
-            artist:   req.body.artist   ?? null,
-            year:     req.body.year     ? parseInt(req.body.year) : null,
-            genre:    req.body.genre    ?? null,
-            track_nr: req.body.track?.no ? parseInt(req.body.track.no) : null,
-            disc_nr:  req.body.disk?.no  ? parseInt(req.body.disk.no) : null,
-        };
-        await db.upsertUserTag(songid, tags);
+    // Fast path: poche proposte cover da Cover Art Archive (1 HEAD sul release-group)
+    instance.get('/cover/fetch', async function(req, reply) {
+        const artist = req?.query?.artist;
+        const album  = req?.query?.album;
+        const mbid   = req?.query?.mbid;
+        logger.trace(`/cover/fetch [${artist}|${album}|${mbid}]`);
+        return coverFetch.proposeCovers({ artist, album, mbid });
+    })
+
+    // Lazy path, parte 1: gli id delle release del gruppo (1 chiamata MB, veloce).
+    // La UI poi pagina chiamando /cover/fetch/front?id= per ognuna (Promise.all a batch).
+    instance.get('/cover/fetch/releases', async function(req, reply) {
+        const mbid = req?.query?.mbid;
+        logger.trace(`/cover/fetch/releases [${mbid}]`);
+        if (!mbid) {
+            return reply.status(400).send({ error: 'mbid required' });
+        }
+        const releaseIds = await coverFetch.listReleaseIds(mbid);
+        return { releaseIds };
+    })
+
+    // Lazy path, parte 2: risolve la front di UNA release (una HEAD, throttlata lato API).
+    // candidate=null se quella release non ha front: la UI la salta. Mai 500 per una flaky.
+    instance.get('/cover/fetch/front', async function(req, reply) {
+        const id = req?.query?.id;
+        logger.trace(`/cover/fetch/front [${id}]`);
+        if (!id) {
+            return reply.status(400).send({ error: 'id required' });
+        }
+        const candidate = await coverFetch.frontForRelease(id);
+        return { candidate };
+    })
+
+    // Salva la cover scelta su tutti i brani dell'album: scarica i byte ORA (lato API),
+    // li scrive in user_id3.cover e accoda l'id3write. Se il download fallisce (archive.org
+    // intermittente) torna 502 alla UI invece di salvare byte vuoti.
+    instance.post('/cover/save', async function(req, reply) {
+        const { album_id, imageUrl, mbid } = req.body;
+        logger.trace(`/cover/save [${album_id}|${imageUrl}|${mbid}]`);
+        if (!album_id || !imageUrl) {
+            return reply.status(400).send({ error: 'album_id and imageUrl required' });
+        }
+        let image;
+        try {
+            image = await coverFetch.downloadImage(imageUrl);
+        }
+        catch(err) {
+            logger.error(err, '/cover/save downloadImage failed');
+            return reply.status(502).send({ error: 'cover download failed' });
+        }
+        await db.setAlbumCover(album_id, image.buffer);
+        if (mbid) {
+            await db.setReleaseGroup(album_id, mbid);
+        }
         await db.upsertPendingJob('id3write', new Date());
-        return { ok: true };
+        // torna i byte già scaricati: la UI aggiorna subito la cache cover senza riscaricare
+        return { ok: true, mime: image.mime, cover: image.buffer.toString('base64') };
     })
 
     instance.get('/search/songs', async function(req, reply) {
@@ -344,7 +397,9 @@ fastify.register((instance, opts, done) => {
 
     instance.delete('/scan/id3/:song_id', async (req, reply) => {
         const { song_id } = req.params;
-        await db.deleteUserTag(song_id);
+        // updated_at (opzionale): delete condizionale, vedi deleteUserTag
+        const { updated_at } = req.query;
+        await db.deleteUserTag(song_id, updated_at);
         return { ok: true };
     });
 

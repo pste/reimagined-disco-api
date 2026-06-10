@@ -5,17 +5,19 @@ const pool = require('./dbpool');
 async function getSongs(params) {
     const client = await pool.connect();
     try {
+        // join files per esporre il bitrate (proprietà del file fisico) insieme al brano
+        const base = 'select s.*, f.bitrate from songs s left join files f on f.song_id = s.song_id';
         let stm, pars;
         if (params.albumid) {
-            stm = 'select * from songs where album_id = $1';
+            stm = `${base} where s.album_id = $1`;
             pars = [params.albumid];
         }
         else if (params.title) {
-            stm = 'select * from songs where title ilike $1';
+            stm = `${base} where s.title ilike $1`;
             pars = [`%${params.title}%`];
         }
         else {
-            stm = 'select * from songs';
+            stm = base;
             pars = [];
         }
         logger.trace(pars, `DB: ${stm}`);
@@ -115,6 +117,43 @@ async function upsertSong(title, tracknr, discnr, album_id) {
     }
 }
 
+// write-through dell'editor: aggiorna la traccia in place — song_id resta stabile,
+// le FK di files/user_stats/user_id3 non si toccano
+async function updateSongFields(song_id, title, track_nr, disc_nr) {
+    const client = await pool.connect();
+    try {
+        const stm = 'update songs set title=$2, track_nr=$3, disc_nr=$4 where song_id=$1';
+        const pars = [song_id, title, track_nr, disc_nr];
+        logger.trace(pars, `DB: ${stm}`);
+        await client.query(stm, pars);
+    }
+    catch(err) {
+        dblog.createLog('ERROR DB updateSongFields', err);
+        throw err;
+    }
+    finally {
+        client.release();
+    }
+}
+
+// rename album/artista nell'editor: sposta tutte le tracce sul nuovo album row
+async function moveSongs(from_album_id, to_album_id) {
+    const client = await pool.connect();
+    try {
+        const stm = 'update songs set album_id=$2 where album_id=$1';
+        const pars = [from_album_id, to_album_id];
+        logger.trace(pars, `DB: ${stm}`);
+        await client.query(stm, pars);
+    }
+    catch(err) {
+        dblog.createLog('ERROR DB moveSongs', err);
+        throw err;
+    }
+    finally {
+        client.release();
+    }
+}
+
 async function countSongs() {
     const client = await pool.connect();
     try {
@@ -141,5 +180,7 @@ module.exports = {
     getSongStats,
     getSongFile,
     upsertSong,
+    updateSongFields,
+    moveSongs,
     countSongs,
 }

@@ -42,19 +42,6 @@ async function getCollection() {
     data = await albums.getCollection();
     return data;
 }
-/*
-async function getCollectionOrig() {
-    let data = [];
-    data = await artists.getArtists();
-    data = await Promise.all(
-        data.map( async(el) => {
-            const cover = await artists.getCover(el.artist_id)
-            el.cover = cover.imagedata;
-            return el;
-        })
-    );
-    return data;
-}*/
 
 async function getCover(album_id) {
     let data = [];
@@ -165,7 +152,7 @@ async function updateSong(fileinfo) {
     const album = await albums.upsertAlbum(songdata.album, songdata.artist, songdata.year, songdata.genre);
     const song = await songs.upsertSong(songdata.title, songdata.trackNumber, songdata.discNumber, album.album_id);
     logger.trace(song, "updateSong SONG:");
-    const file = await files.upsertFile(song.song_id, songdata.basedir, songdata.filepath, songdata.filename, songdata.modified);
+    const file = await files.upsertFile(song.song_id, songdata.basedir, songdata.filepath, songdata.filename, songdata.modified, fileinfo.bitrate);
     if (songdata.cover) {
         await albums.upsertCover(song.album_id, songdata.cover);
     }
@@ -221,16 +208,59 @@ async function upsertPendingJob(name, when) {
 
 /////////////////////////////////////////////////////////////////
 
-async function upsertUserTag(song_id, tags) {
-    return await user_id3.upsertUserTag(song_id, tags);
-}
-
 async function getPendingTags() {
     return await user_id3.getPendingTags();
 }
 
-async function deleteUserTag(song_id) {
-    return await user_id3.deleteUserTag(song_id);
+async function setAlbumCover(album_id, cover) {
+    return await user_id3.setAlbumCover(album_id, cover);
+}
+
+async function setReleaseGroup(album_id, mbid) {
+    return await albums.setReleaseGroup(album_id, mbid);
+}
+
+// Save dell'editor album: write-through sul DB (stato desiderato, subito coerente
+// per editor e Collection) + coda user_id3 per il job id3write che scriverà i file.
+// Riusa upsertAlbum (find-or-create come lo scan): quando il job avrà scritto i file
+// e lo scan li rileggerà, convergerà sulle stesse righe senza doppioni.
+async function saveAlbumTags(album_id, meta, tracks) {
+    const UNKNOWN = 'UNKNOWN';
+    // albums ha title/genre NOT NULL e year NOT NULL: stessi default dello scan
+    const album = await albums.upsertAlbum(
+        meta.album  || UNKNOWN,
+        meta.artist || UNKNOWN,
+        meta.year   || 1900,
+        meta.genre  || UNKNOWN
+    );
+    if (album.album_id !== Number(album_id)) {
+        // rename di album/artista: l'upsert è atterrato su un'altra riga →
+        // porta dietro cover e MBID, sposta le tracce, ripulisci gli orfani
+        const oldAlbum = await albums.getAlbum(album_id);
+        const cover = await albums.getCover(album_id);
+        if (cover) { await albums.upsertCover(album.album_id, cover); }
+        if (oldAlbum?.mb_release_group_id) { await albums.setReleaseGroup(album.album_id, oldAlbum.mb_release_group_id); }
+        await songs.moveSongs(album_id, album.album_id);
+        await albums.clearEmptyAlbums();
+    }
+    for (const track of tracks) {
+        await songs.updateSongFields(track.song_id, track.title, track.track_nr, track.disc_nr);
+        // in user_id3 i NULL significano "non scrivere quel frame": passa i valori grezzi
+        await user_id3.upsertUserTag(track.song_id, {
+            title:    track.title    ?? null,
+            album:    meta.album     ?? null,
+            artist:   meta.artist    ?? null,
+            year:     meta.year      ?? null,
+            genre:    meta.genre     ?? null,
+            track_nr: track.track_nr ?? null,
+            disc_nr:  track.disc_nr  ?? null,
+        });
+    }
+    return album.album_id;
+}
+
+async function deleteUserTag(song_id, updated_at) {
+    return await user_id3.deleteUserTag(song_id, updated_at);
 }
 
 async function setUserTagError(song_id) {
@@ -243,7 +273,6 @@ module.exports = {
     getCollection,
     getSources: sources.getSources,
     getCover,
-    // getArtists,
     getAlbums,
     getSongs,
     getSongInfo,
@@ -266,8 +295,10 @@ module.exports = {
     updateJobStatus,
     upsertPendingJob,
     // user id3
-    upsertUserTag,
+    saveAlbumTags,
     getPendingTags,
+    setAlbumCover,
+    setReleaseGroup,
     deleteUserTag,
     setUserTagError,
 }

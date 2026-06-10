@@ -27,7 +27,13 @@ async function upsertUserTag(song_id, tags) {
 async function getPendingTags() {
     const client = await pool.connect();
     try {
-        const stm = `SELECT song_id, title, album, artist, "year", genre, track_nr, disc_nr FROM user_id3 WHERE status='pending'`;
+        // La cover viaggia già qui come base64 (ripetuta per ogni brano dell'album, ok):
+        // il pod jobs la usa così com'è, senza riscaricarla. NULL dove non c'è cover.
+        // updated_at viaggia come testo (::text) così torna identico nel delete condizionale,
+        // senza perdita di precisione/fuso nel round-trip JSON.
+        const stm = `SELECT song_id, title, album, artist, "year", genre, track_nr, disc_nr,
+                        encode(cover, 'base64') AS cover, updated_at::text AS updated_at
+                     FROM user_id3 WHERE status='pending'`;
         logger.trace('DB: getPendingTags');
         const res = await client.query(stm);
         return res.rows;
@@ -41,11 +47,43 @@ async function getPendingTags() {
     }
 }
 
-async function deleteUserTag(song_id) {
+// Scrive la stessa cover (byte) su tutti i brani dell'album in un colpo solo.
+// Crea la riga user_id3 dove manca, aggiorna solo la cover dove esiste (preserva gli altri override).
+async function setAlbumCover(album_id, cover) {
     const client = await pool.connect();
     try {
-        const stm = 'DELETE FROM user_id3 WHERE song_id=$1';
-        const pars = [song_id];
+        const stm = `
+            INSERT INTO user_id3 (song_id, cover, updated_at, status)
+            SELECT song_id, $2, NOW(), 'pending' FROM songs WHERE album_id = $1
+            ON CONFLICT (song_id) DO UPDATE SET cover=$2, updated_at=NOW(), status='pending'`;
+        const pars = [album_id, cover];
+        logger.trace([album_id, '<cover bytes>'], 'DB: setAlbumCover');
+        await client.query(stm, pars);
+    }
+    catch(err) {
+        dblog.createLog('ERROR DB setAlbumCover', err);
+        throw err;
+    }
+    finally {
+        client.release();
+    }
+}
+
+async function deleteUserTag(song_id, updated_at) {
+    const client = await pool.connect();
+    try {
+        // Delete condizionale (dal job): se la riga è stata rimodificata mentre il job
+        // scriveva il file (updated_at diverso) NON va cancellata — resta pending e il
+        // prossimo giro scrive i valori nuovi. Senza updated_at cancella e basta.
+        let stm, pars;
+        if (updated_at) {
+            stm = 'DELETE FROM user_id3 WHERE song_id=$1 AND updated_at=$2';
+            pars = [song_id, updated_at];
+        }
+        else {
+            stm = 'DELETE FROM user_id3 WHERE song_id=$1';
+            pars = [song_id];
+        }
         logger.trace(pars, 'DB: deleteUserTag');
         await client.query(stm, pars);
     }
@@ -75,4 +113,4 @@ async function setUserTagError(song_id) {
     }
 }
 
-module.exports = { upsertUserTag, getPendingTags, deleteUserTag, setUserTagError };
+module.exports = { upsertUserTag, getPendingTags, setAlbumCover, deleteUserTag, setUserTagError };
