@@ -104,6 +104,46 @@ async function getAlbum(album_id) {
     }
 }
 
+// lookup per (title, artist_id): serve all'editor per capire se un rename
+// resta sulla stessa riga (in-place) o converge su un altro album (merge)
+async function findAlbum(title, artist_id) {
+    const client = await pool.connect();
+    try {
+        const stm = 'select * from albums where title = $1 and artist_id = $2';
+        const pars = [title, artist_id];
+        logger.trace(pars, `DB: ${stm}`);
+        const res = await client.query(stm, pars);
+        const rows = res.rows;
+        logger.trace(`DB ==> ${rows.length}`)
+        return rows[0];
+    }
+    catch(err) {
+        dblog.createLog('ERROR DB findAlbum', err);
+        throw err;
+    }
+    finally {
+        client.release();
+    }
+}
+
+// rename in-place dell'editor: aggiorna la riga per chiave, album_id mai cambiato
+async function updateAlbumById(album_id, title, artist_id, year, genre) {
+    const client = await pool.connect();
+    try {
+        const stm = 'update albums set title=$2, artist_id=$3, "year"=$4, genre=$5 where album_id=$1';
+        const pars = [album_id, title, artist_id, year, genre];
+        logger.trace(pars, `DB: ${stm}`);
+        await client.query(stm, pars);
+    }
+    catch(err) {
+        dblog.createLog('ERROR DB updateAlbumById', err);
+        throw err;
+    }
+    finally {
+        client.release();
+    }
+}
+
 async function countAlbums() {
     const client = await pool.connect();
     try {
@@ -217,13 +257,14 @@ async function clearEmptyAlbums() {
     const client = await pool.connect();
     try {
         let stm, pars;
-        // clear empty albums
-        stm = 'delete from albums where album_id not in (select album_id from songs)';
+        // clear empty cover PRIMA degli album: covers.album_id REFERENCES albums
+        // senza CASCADE, cancellare prima gli album viola la FK
+        stm = 'delete from covers where album_id not in (select album_id from songs)';
         pars = [];
         logger.trace(pars, `DB: ${stm}`);
         await client.query(stm, pars);
-        // clear empty cover
-        stm = 'delete from covers where album_id not in (select album_id from songs)';
+        // clear empty albums
+        stm = 'delete from albums where album_id not in (select album_id from songs)';
         pars = [];
         logger.trace(pars, `DB: ${stm}`);
         await client.query(stm, pars);
@@ -247,6 +288,8 @@ module.exports = {
     getAlbumsByTitle,
     getAlbumsByArtist,
     getAlbum,
+    findAlbum,
+    updateAlbumById,
     countAlbums,
     upsertAlbum,
     setReleaseGroup,

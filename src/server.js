@@ -149,7 +149,17 @@ fastify.register((instance, opts, done) => {
             track_nr: t.track_nr != null ? parseInt(t.track_nr) : null,
             disc_nr:  t.disc_nr  != null ? parseInt(t.disc_nr)  : null,
         }));
-        const newAlbumId = await db.saveAlbumTags(album_id, meta, trackList);
+        let newAlbumId;
+        try {
+            newAlbumId = await db.saveAlbumTags(album_id, meta, trackList);
+        }
+        catch (err) {
+            // merge bloccato da tracce omonime: errore parlante alla UI (il toast mostra "error")
+            if (err.code === 'MERGE_DUPLICATE_TITLES') {
+                return reply.status(409).send({ error: err.message });
+            }
+            throw err;
+        }
         await db.upsertPendingJob('id3write', new Date());
         return { ok: true, album_id: newAlbumId };
     })

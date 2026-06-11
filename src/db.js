@@ -218,26 +218,47 @@ async function setReleaseGroup(album_id, mbid) {
 
 // Save dell'editor album: write-through sul DB (stato desiderato, subito coerente
 // per editor e Collection) + coda user_id3 per il job id3write che scriverà i file.
-// Riusa upsertAlbum (find-or-create come lo scan): quando il job avrà scritto i file
-// e lo scan li rileggerà, convergerà sulle stesse righe senza doppioni.
+// Il riferimento resta sulla CHIAVE: il rename aggiorna la riga in-place e album_id
+// non cambia mai nel caso comune. La convergenza con lo scan è garantita comunque:
+// al rescan upsertAlbum trova per (title, artist_id) proprio la riga rinominata.
+// Solo se il rename coincide con un ALTRO album esistente si fa il merge (move).
 async function saveAlbumTags(album_id, meta, tracks) {
     const UNKNOWN = 'UNKNOWN';
     // albums ha title/genre NOT NULL e year NOT NULL: stessi default dello scan
-    const album = await albums.upsertAlbum(
-        meta.album  || UNKNOWN,
-        meta.artist || UNKNOWN,
-        meta.year   || 1900,
-        meta.genre  || UNKNOWN
-    );
-    if (album.album_id !== Number(album_id)) {
-        // rename di album/artista: l'upsert è atterrato su un'altra riga →
-        // porta dietro cover e MBID, sposta le tracce, ripulisci gli orfani
-        const oldAlbum = await albums.getAlbum(album_id);
-        const cover = await albums.getCover(album_id);
-        if (cover) { await albums.upsertCover(album.album_id, cover); }
-        if (oldAlbum?.mb_release_group_id) { await albums.setReleaseGroup(album.album_id, oldAlbum.mb_release_group_id); }
-        await songs.moveSongs(album_id, album.album_id);
+    const title = meta.album || UNKNOWN;
+    const year  = meta.year  || 1900;
+    const genre = meta.genre || UNKNOWN;
+    const artist = await artists.upsertArtist(meta.artist || UNKNOWN);
+
+    let albumId = Number(album_id);
+    const oldAlbum = await albums.getAlbum(albumId);
+    const target = await albums.findAlbum(title, artist.artist_id);
+    if (!target || target.album_id === albumId) {
+        // caso comune (anche rename): update in-place per chiave
+        await albums.updateAlbumById(albumId, title, artist.artist_id, year, genre);
+        if (oldAlbum && oldAlbum.artist_id !== artist.artist_id) {
+            // rename artista: il vecchio artist row può essere rimasto senza album
+            await albums.clearEmptyAlbums();
+        }
+    }
+    else {
+        // merge: (title, artist) è un altro album esistente → porta dietro cover e MBID,
+        // sposta le tracce, ripulisci gli orfani, poi applica year/genre del form.
+        // Tracce omonime nei due album violerebbero UNIQUE(title, album_id) al move:
+        // check preventivo PRIMA di ogni mutazione → 409 parlante, niente stato a metà
+        const dupes = await songs.getDuplicateTitles(albumId, target.album_id);
+        if (dupes.length > 0) {
+            const err = new Error(`Esiste già l'album "${title}" di ${artist.name} e contiene tracce omonime: ${dupes.join(', ')}`);
+            err.code = 'MERGE_DUPLICATE_TITLES';
+            throw err;
+        }
+        const cover = await albums.getCover(albumId);
+        if (cover) { await albums.upsertCover(target.album_id, cover); }
+        if (oldAlbum?.mb_release_group_id) { await albums.setReleaseGroup(target.album_id, oldAlbum.mb_release_group_id); }
+        await songs.moveSongs(albumId, target.album_id);
         await albums.clearEmptyAlbums();
+        albumId = target.album_id;
+        await albums.updateAlbumById(albumId, title, artist.artist_id, year, genre);
     }
     for (const track of tracks) {
         await songs.updateSongFields(track.song_id, track.title, track.track_nr, track.disc_nr);
@@ -252,7 +273,7 @@ async function saveAlbumTags(album_id, meta, tracks) {
             disc_nr:  track.disc_nr  ?? null,
         });
     }
-    return album.album_id;
+    return albumId;
 }
 
 async function deleteUserTag(song_id, updated_at) {

@@ -136,6 +136,30 @@ async function updateSongFields(song_id, title, track_nr, disc_nr) {
     }
 }
 
+// titoli presenti in entrambi gli album: violerebbero UNIQUE(title, album_id)
+// al moveSongs, quindi bloccano il merge dell'editor (409)
+async function getDuplicateTitles(from_album_id, to_album_id) {
+    const client = await pool.connect();
+    try {
+        const stm = 'select a.title from songs a \
+                    join songs b on b.album_id = $2 and b.title = a.title \
+                    where a.album_id = $1';
+        const pars = [from_album_id, to_album_id];
+        logger.trace(pars, `DB: ${stm}`);
+        const res = await client.query(stm, pars);
+        const rows = res.rows;
+        logger.trace(`DB ==> ${rows.length}`)
+        return rows.map(r => r.title);
+    }
+    catch(err) {
+        dblog.createLog('ERROR DB getDuplicateTitles', err);
+        throw err;
+    }
+    finally {
+        client.release();
+    }
+}
+
 // rename album/artista nell'editor: sposta tutte le tracce sul nuovo album row
 async function moveSongs(from_album_id, to_album_id) {
     const client = await pool.connect();
@@ -181,6 +205,7 @@ module.exports = {
     getSongFile,
     upsertSong,
     updateSongFields,
+    getDuplicateTitles,
     moveSongs,
     countSongs,
 }
