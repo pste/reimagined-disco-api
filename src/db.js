@@ -18,9 +18,10 @@ const utils = require('./utils');
 
 /////////////////////////////////////////////////////////////////
 
+// no cover here on purpose: this runs in hot paths (/chunk/song, /stream/song, /scan/song/:id)
+// and covers are served separately by /search/cover
 async function _getAlbumInfo(album_id) {
     const album = await albums.getAlbum(album_id);
-    const cover = await albums.getCover(album_id);
     const artist = await artists.getArtist(album.artist_id);
 
     const data = {
@@ -29,7 +30,6 @@ async function _getAlbumInfo(album_id) {
 		album: album.title,
 		year: album.year,
 		genre: album.genre,
-        cover: cover?.imagedata
     }
     return data;
 }
@@ -53,10 +53,6 @@ async function getCover(album_id) {
 async function getAlbums(params) {
     // get a list of albums
     let data = [];
-    if (params.albumid) {
-        logger.trace('getAlbum');
-        data = [{album_id: params.albumid}]; // prepare a fake array of albums; no db needed
-    }
     if (params.artistid) {
         logger.trace('getAlbumsByArtist');
         data = await albums.getAlbumsByArtist(params.artistid);
