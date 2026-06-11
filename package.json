@@ -7,7 +7,7 @@
     "prod": "node app.js"
   },
   "author": "pste",
-  "license": "ISC",
+  "license": "MIT",
   "description": "",
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
