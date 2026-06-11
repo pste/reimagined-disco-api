@@ -248,26 +248,37 @@ fastify.register((instance, opts, done) => {
         const chunkId = `${songid}:${chunkIndex}`;
         logger.trace(`Chunking ${chunkId}`);
 
+        // past-the-end probe: metadata already cached → answer null without re-chunking the file
+        let metadata = cache.getMetadata(songid);
+        if (metadata && Number(chunkIndex) > metadata.totalChunks) {
+            logger.trace(`Chunk ${chunkId} beyond totalChunks ${metadata.totalChunks}`);
+            return { data: null };
+        }
+
         // cache fail: refresh whole song
-        if (!cache.has(chunkId))  {
+        // get-then-check (not has-then-get): the chunk could expire between the two calls.
+        // chunk 1 must also carry metadata, so refresh if that expired too.
+        let chunk = cache.get(chunkId);
+        if (!chunk || (chunkIndex === '1' && !metadata)) {
             const song = await db.getSongInfo(songid);
             logger.trace(`Now caching ${JSON.stringify(song)}`);
-            const [chunked, metadata] = await Promise.all([
+            const [chunked, fileMeta] = await Promise.all([
                 streamer.chunkFile(song.fullpath),
                 streamer.readMetadata(song.fullpath)
             ]);
             logger.trace(`Now cached ${JSON.stringify(song)}`)
             const totalChunks = await cache.storeChunks(songid, chunked);
-            cache.storeMetadata(songid, { ...metadata, totalChunks });
+            metadata = { ...fileMeta, totalChunks };
+            cache.storeMetadata(songid, metadata);
             logger.trace(`Chunked ${chunkId}`);
+            chunk = cache.get(chunkId);
         }
 
         // return buffer block
         logger.trace(`Chunk cached ${chunkId}`);
-        const chunk = cache.get(chunkId);
         const data = chunk ? chunk.toString('base64') : null;
         if (chunkIndex === '1') {
-            return { metadata: cache.getMetadata(songid), data };
+            return { metadata, data };
         }
         return { data };
     })

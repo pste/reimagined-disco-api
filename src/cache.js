@@ -12,7 +12,6 @@ const cache = new LRUCache({
 module.exports = {
     get: (key) => cache.get(key),
     set: (key, value) => cache.set(key, value),
-    has: (key) => cache.has(key),
     storeChunks: async (songid, buffer) => {
         // buffer is an array of chunks
         let idx = 0;
