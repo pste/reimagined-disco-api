@@ -15,7 +15,11 @@ const coverFetch = require('./coverFetch');
 const fastifyOptions = {
     loggerInstance: logger,
     disableRequestLogging: ( process.env.DISABLE_REQUEST_LOGGING ) ? true : false,
-    requestTimeout: 10 * 1000 // 10 secs
+    requestTimeout: 10 * 1000, // 10 secs
+    // POST /scan/song porta la cover APIC nel body, serializzata come Buffer JSON
+    // ({type:'Buffer',data:[...]}): ogni byte diventa un numero+virgola, quindi una
+    // cover di pochi MB gonfia oltre il default Fastify di 1 MB → 413. Alzato a 20 MB.
+    bodyLimit: 20 * 1024 * 1024 // 20 MB
 }
 
 const fastify = fastifyApp( fastifyOptions );
@@ -387,9 +391,9 @@ fastify.register((instance, opts, done) => {
 
     instance.post('/scan/song', async (req, reply) => {
         const fileinfo = req.body;
-        // Reconstruct Buffer from JSON-serialized form ({type:'Buffer',data:[...]})
+        // La cover arriva in base64 (vedi readid3 nel job): ricostruisci il Buffer
         if (fileinfo.tags?.image?.imageBuffer) {
-            fileinfo.tags.image.imageBuffer = Buffer.from(fileinfo.tags.image.imageBuffer);
+            fileinfo.tags.image.imageBuffer = Buffer.from(fileinfo.tags.image.imageBuffer, 'base64');
         }
         await db.updateSong(fileinfo);
         return { ok: true };
