@@ -257,6 +257,23 @@ async function clearEmptyAlbums() {
     const client = await pool.connect();
     try {
         let stm, pars;
+        // clear song orfane (senza file): un rename dei tag fatto fuori dall'app (tool
+        // esterno) fa sì che lo scan, alla riconvergenza per chiave naturale (title,album_id),
+        // crei una NUOVA song e riassegni il file ad essa via upsertFile, lasciando la vecchia
+        // song senza file → tiene vivo il vecchio album/artista. Vanno raccolte qui.
+        // song_id è referenziato nudo (niente CASCADE): prima user_id3/user_stats, poi songs.
+        stm = 'delete from user_id3 where song_id not in (select song_id from files)';
+        pars = [];
+        logger.trace(pars, `DB: ${stm}`);
+        await client.query(stm, pars);
+        stm = 'delete from user_stats where song_id not in (select song_id from files)';
+        pars = [];
+        logger.trace(pars, `DB: ${stm}`);
+        await client.query(stm, pars);
+        stm = 'delete from songs where song_id not in (select song_id from files)';
+        pars = [];
+        logger.trace(pars, `DB: ${stm}`);
+        await client.query(stm, pars);
         // clear empty cover PRIMA degli album: covers.album_id REFERENCES albums
         // senza CASCADE, cancellare prima gli album viola la FK
         stm = 'delete from covers where album_id not in (select album_id from songs)';
