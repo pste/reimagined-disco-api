@@ -106,9 +106,19 @@ fastify.register((instance, opts, done) => {
     })
 
     instance.get('/collection', async (req, reply) => {
-        logger.trace(`/collection`);
-        const data = await db.getCollection();
+        const user = req.session.get('user');
+        logger.trace(`/collection ${user?.user_id}`);
+        const data = await db.getCollection(user.user_id);
         return data;
+    })
+
+    // toggle preferito (per utente) su un album
+    instance.post('/favorite', async (req, reply) => {
+        const { album_id, favorite } = req.body;
+        const user = req.session.get('user');
+        logger.trace(`/favorite [album:${album_id}] [favorite:${favorite}] ${user?.user_id}`);
+        await db.setFavorite(user.user_id, album_id, favorite);
+        return { ok: true };
     })
 
     instance.get('/sources', async function(req, reply) {
@@ -315,9 +325,9 @@ fastify.register((instance, opts, done) => {
     })
 
     instance.post('/parameters', async function(req, reply) {
-        const { cronRequeue, cacheTTLDays } = req.body;
-        logger.trace(`/parameters [cronRequeue:${cronRequeue}] [cacheTTLDays:${cacheTTLDays}]`);
-        await db.saveParameters(cronRequeue, cacheTTLDays);
+        const { cronRequeue, cacheTTLDays, favCacheTTLDays } = req.body;
+        logger.trace(`/parameters [cronRequeue:${cronRequeue}] [cacheTTLDays:${cacheTTLDays}] [favCacheTTLDays:${favCacheTTLDays}]`);
+        await db.saveParameters(cronRequeue, cacheTTLDays, favCacheTTLDays);
         return { ok: true };
     })
 

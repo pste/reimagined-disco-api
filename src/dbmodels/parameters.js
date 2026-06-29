@@ -22,11 +22,11 @@ async function getParameters() {
     }
 }
 
-async function saveParameters(cronRequeue, cacheTTLDays) {
+async function saveParameters(cronRequeue, cacheTTLDays, favCacheTTLDays) {
     const client = await pool.connect();
     try {
-        const stm = 'update parameters set "cronRequeue"=$1, "cacheTTLDays"=$2 where param_id=1';
-        const pars = [cronRequeue, cacheTTLDays];
+        const stm = 'update parameters set "cronRequeue"=$1, "cacheTTLDays"=$2, "favCacheTTLDays"=$3 where param_id=1';
+        const pars = [cronRequeue, cacheTTLDays, favCacheTTLDays];
         logger.trace(pars, `DB: ${stm}`);
         await client.query(stm, pars);
     }

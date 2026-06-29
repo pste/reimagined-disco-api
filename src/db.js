@@ -11,6 +11,7 @@ const pars = require('./dbmodels/parameters');
 const users = require('./dbmodels/users');
 const jobs = require('./dbmodels/jobs');
 const user_id3 = require('./dbmodels/user_id3');
+const favorites = require('./dbmodels/favorites');
 
 const logger = require('./logger');
 const utils = require('./utils');
@@ -37,10 +38,18 @@ async function _getAlbumInfo(album_id) {
 /////////////////////////////////////////////////////////////////
 
 // library page
-async function getCollection() {
+async function getCollection(user_id) {
     let data = [];
-    data = await albums.getCollection();
+    data = await albums.getCollection(user_id);
     return data;
+}
+
+async function setFavorite(user_id, album_id, favorite) {
+    return await favorites.setFavorite(user_id, album_id, favorite);
+}
+
+async function getFavorites(user_id) {
+    return await favorites.getFavorites(user_id);
 }
 
 async function getCover(album_id) {
@@ -166,8 +175,8 @@ async function getParameters() {
     return await pars.getParameters();
 }
 
-async function saveParameters(cronRequeue, cacheTTLDays) {
-    return await pars.saveParameters(cronRequeue, cacheTTLDays);
+async function saveParameters(cronRequeue, cacheTTLDays, favCacheTTLDays) {
+    return await pars.saveParameters(cronRequeue, cacheTTLDays, favCacheTTLDays);
 }
 
 async function getUser(user, pwd) {
@@ -288,6 +297,8 @@ async function setUserTagError(song_id) {
 module.exports = {
     // web
     getCollection,
+    setFavorite,
+    getFavorites,
     getSources: sources.getSources,
     getCover,
     getAlbums,

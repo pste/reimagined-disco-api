@@ -3,7 +3,7 @@ const dblog = require('./logs');
 const artists = require('./artists');
 const pool = require('./dbpool');
 
-async function getCollection() {
+async function getCollection(user_id) {
     const client = await pool.connect();
     try {
         /*const stmOld = 'select al.*, ar.name \
@@ -16,12 +16,13 @@ async function getCollection() {
             LEFT JOIN files f ON so.song_id = f.song_id
             GROUP BY so.album_id
         )
-        SELECT al.*, ar.name, st.added, st.played, st.playcount, st.stars
+        SELECT al.*, ar.name, st.added, st.played, st.playcount, st.stars, (uf.user_id IS NOT NULL) AS favorite
             FROM albums al
             INNER JOIN artists ar ON al.artist_id = ar.artist_id
-            LEFT JOIN albumstats st ON al.album_id = st.album_id`;
+            LEFT JOIN albumstats st ON al.album_id = st.album_id
+            LEFT JOIN user_favorites uf ON uf.album_id = al.album_id AND uf.user_id = $1`;
 
-        const pars = [];
+        const pars = [user_id];
         logger.trace(pars, `DB: ${stm}`);
         const res = await client.query(stm, pars);
         const rows = res.rows;
@@ -277,6 +278,12 @@ async function clearEmptyAlbums() {
         // clear empty cover PRIMA degli album: covers.album_id REFERENCES albums
         // senza CASCADE, cancellare prima gli album viola la FK
         stm = 'delete from covers where album_id not in (select album_id from songs)';
+        pars = [];
+        logger.trace(pars, `DB: ${stm}`);
+        await client.query(stm, pars);
+        // clear preferiti orfani PRIMA degli album: user_favorites.album_id referenzia
+        // albums senza CASCADE, cancellare prima gli album viola la FK logica
+        stm = 'delete from user_favorites where album_id not in (select album_id from songs)';
         pars = [];
         logger.trace(pars, `DB: ${stm}`);
         await client.query(stm, pars);
