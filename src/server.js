@@ -10,6 +10,7 @@ const streamer = require('./streamer');
 const params = require('./parameters');
 const coverFetch = require('./coverFetch');
 const sessionStore = require('./sessionStore');
+const loginLimiter = require('./loginLimiter');
 
 // =============== FASTIFY =============== // 
 
@@ -17,6 +18,10 @@ const fastifyOptions = {
     loggerInstance: logger,
     disableRequestLogging: ( process.env.DISABLE_REQUEST_LOGGING ) ? true : false,
     requestTimeout: 10 * 1000, // 10 secs
+    // l'API sta dietro Traefik (Service ClusterIP): senza, req.ip sarebbe l'IP del pod di
+    // Traefik per tutti. 1 = ci si fida di UN proxy: req.ip è l'indirizzo che Traefik
+    // aggiunge in X-Forwarded-For (serve al limite dei tentativi di login per IP)
+    trustProxy: 1,
     // POST /scan/song porta la cover APIC nel body, serializzata come Buffer JSON
     // ({type:'Buffer',data:[...]}): ogni byte diventa un numero+virgola, quindi una
     // cover di pochi MB gonfia oltre il default Fastify di 1 MB → 413. Alzato a 20 MB.
@@ -60,6 +65,20 @@ fastify.register(session, {
 fastify.register(fastifyRange, { throwOnInvalid: true });
 
 // =============== ROUTES =============== //
+
+// job che il pod jobs sa eseguire (vedi HANDLERS in reimagined-disco-jobs/src/jobs.js)
+const JOB_NAMES = ['filescan', 'fullscan', 'id3write'];
+
+// errore di validazione della creazione di un job, o null se la richiesta è valida
+function jobRequestError(name, when) {
+    if (!JOB_NAMES.includes(name)) {
+        return `job sconosciuto: ${name} (ammessi: ${JOB_NAMES.join(', ')})`;
+    }
+    if (!when || isNaN(new Date(when).getTime())) {
+        return 'when mancante o non è una data valida';
+    }
+    return null;
+}
 /*
 fastify.get('/', function(req, reply) {
     reply.send({ api: "Online", authenticated: req.session.authenticated });
@@ -68,9 +87,22 @@ fastify.get('/', function(req, reply) {
 // OPEN ROUTES
 fastify.register((instance, opts, done) => {
     instance.post('/login', async (req, reply) => {
-        const { username, password } = req.body;
+        const { username, password } = req.body ?? {};
+        // body malformato: 400 (prima finiva in un 500 dentro l'hash della password)
+        if (typeof username !== 'string' || typeof password !== 'string' || !username || !password
+            || username.length > 200 || password.length > 200) {
+            return reply.status(400).send({ error: 'username and password required' });
+        }
+        // troppi tentativi falliti (per username o per IP): 429, senza nemmeno interrogare il DB
+        const wait = loginLimiter.retryAfterSecs(req.ip, username);
+        if (wait > 0) {
+            logger.warn(`server: /login 429 - too many failed attempts [${req.ip}]`);
+            reply.header('Retry-After', wait);
+            return reply.status(429).send({ error: `Troppi tentativi di login falliti: riprova tra ${Math.ceil(wait / 60)} minuti` });
+        }
         const dbuser = await db.getUser(username, password);
         if (dbuser) {
+            loginLimiter.recordSuccess(req.ip, username);
             const authuser = { username: dbuser.username, user_id: dbuser.user_id, authenticated: true };
             req.session.set('user', authuser);
             // pulizia sessioni scadute (fire-and-forget): al login basta, niente cron
@@ -78,7 +110,8 @@ fastify.register((instance, opts, done) => {
             return authuser;
         }
         else {
-            logger.error("server: /login 401 - invalid credentials");
+            loginLimiter.recordFailure(req.ip, username);
+            logger.error(`server: /login 401 - invalid credentials [${req.ip}]`);
             return reply.status(401).send({ error: 'Invalid credentials' });
         }
     })
@@ -198,6 +231,9 @@ fastify.register((instance, opts, done) => {
         const album  = req?.query?.album;
         const mbid   = req?.query?.mbid;
         logger.trace(`/cover/fetch [${artist}|${album}|${mbid}]`);
+        if (mbid && !coverFetch.isMbid(mbid)) {
+            return reply.status(400).send({ error: 'mbid non valido' });
+        }
         return coverFetch.proposeCovers({ artist, album, mbid });
     })
 
@@ -206,8 +242,8 @@ fastify.register((instance, opts, done) => {
     instance.get('/cover/fetch/releases', async function(req, reply) {
         const mbid = req?.query?.mbid;
         logger.trace(`/cover/fetch/releases [${mbid}]`);
-        if (!mbid) {
-            return reply.status(400).send({ error: 'mbid required' });
+        if (!coverFetch.isMbid(mbid)) {
+            return reply.status(400).send({ error: 'mbid required (UUID)' });
         }
         const releaseIds = await coverFetch.listReleaseIds(mbid);
         return { releaseIds };
@@ -218,8 +254,8 @@ fastify.register((instance, opts, done) => {
     instance.get('/cover/fetch/front', async function(req, reply) {
         const id = req?.query?.id;
         logger.trace(`/cover/fetch/front [${id}]`);
-        if (!id) {
-            return reply.status(400).send({ error: 'id required' });
+        if (!coverFetch.isMbid(id)) {
+            return reply.status(400).send({ error: 'id required (UUID)' });
         }
         const candidate = await coverFetch.frontForRelease(id);
         return { candidate };
@@ -234,13 +270,20 @@ fastify.register((instance, opts, done) => {
         if (!album_id || !imageUrl) {
             return reply.status(400).send({ error: 'album_id and imageUrl required' });
         }
+        // solo Cover Art Archive / archive.org, https (vedi coverFetch: niente SSRF)
+        if (!coverFetch.isAllowedImageUrl(imageUrl)) {
+            return reply.status(400).send({ error: 'imageUrl non ammesso: solo coverartarchive.org / archive.org' });
+        }
+        if (mbid && !coverFetch.isMbid(mbid)) {
+            return reply.status(400).send({ error: 'mbid non valido' });
+        }
         let image;
         try {
             image = await coverFetch.downloadImage(imageUrl);
         }
         catch(err) {
             logger.error(err, '/cover/save downloadImage failed');
-            return reply.status(502).send({ error: 'cover download failed' });
+            return reply.status(502).send({ error: `cover download failed: ${err.message}` });
         }
         await db.setAlbumCover(album_id, image.buffer);
         if (mbid) {
@@ -355,7 +398,11 @@ fastify.register((instance, opts, done) => {
     })
 
     instance.post('/jobs', async function(req, reply) {
-        const { name, when } = req.body;
+        const { name, when } = req.body ?? {};
+        const error = jobRequestError(name, when);
+        if (error) {
+            return reply.status(400).send({ error });
+        }
         return db.upsertPendingJob(name, when);
     })
 
@@ -463,7 +510,11 @@ fastify.register((instance, opts, done) => {
     });
 
     instance.post('/jobs/scan', async (req, reply) => {
-        const { name, when } = req.body;
+        const { name, when } = req.body ?? {};
+        const error = jobRequestError(name, when);
+        if (error) {
+            return reply.status(400).send({ error });
+        }
         return db.upsertPendingJob(name, when);
     });
 

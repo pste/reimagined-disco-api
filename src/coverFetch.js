@@ -16,6 +16,42 @@ const JSON_TIMEOUT  = 10000;
 const IMAGE_TIMEOUT = 20000;
 const RETRY_TRIES   = 3;
 
+// Download delle cover (POST /cover/save): l'URL arriva dalla UI, quindi l'API scarica solo
+// da Cover Art Archive e da archive.org (dove CAA reindirizza), https, con un tetto di byte.
+// Senza, un utente autenticato poteva far fare all'API richieste verso qualsiasi indirizzo,
+// anche della rete interna del cluster (SSRF), e caricare file di dimensione arbitraria
+const ALLOWED_IMAGE_HOSTS = ['coverartarchive.org', 'archive.org'];
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB (le cover più grandi in DB sono ~3,6 MB)
+const MAX_REDIRECTS = 5;
+
+// gli id MusicBrainz (release, release-group) sono UUID: finiscono negli URL di MB/CAA
+const MBID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isMbid(value) {
+    return typeof value === 'string' && MBID_RE.test(value);
+}
+
+function isAllowedImageUrl(url) {
+    let parsed;
+    try {
+        parsed = new URL(url);
+    }
+    catch(err) {
+        return false;
+    }
+    if (parsed.protocol !== 'https:') {
+        return false;
+    }
+    return ALLOWED_IMAGE_HOSTS.some((host) => parsed.hostname === host || parsed.hostname.endsWith(`.${host}`));
+}
+
+// errore NON transitorio (4xx): withRetry non riprova
+function permanentError(message, statusCode = 400) {
+    const err = new Error(message);
+    err.statusCode = statusCode;
+    return err;
+}
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Ritenta su errori 5xx / di rete: archive.org (dietro CAA) ogni tanto dà 502/503 transitori.
@@ -213,26 +249,71 @@ async function proposeCovers({ artist, album, mbid }) {
     return { releaseGroupId: unique[0]?.releaseGroupId ?? groups[0].mbid, candidates: unique };
 }
 
-// Scarica i byte dell'immagine scelta (al salvataggio). CAA risponde 307 verso archive.org: fetch segue i redirect.
-async function downloadImage(url) {
-    return withRetry(async () => {
-        const res = await fetch(url, {
-            headers: { 'User-Agent': USER_AGENT },
-            redirect: 'follow',
-            signal: AbortSignal.timeout(IMAGE_TIMEOUT),
-        });
-        if (!res.ok) {
-            const err = new Error(`HTTP ${res.status} downloading ${url}`);
-            err.statusCode = res.status;
-            throw err;
+// legge il corpo fermandosi oltre MAX_IMAGE_BYTES (content-length può mancare o mentire)
+async function readLimited(res) {
+    const declared = Number(res.headers.get('content-length'));
+    if (declared > MAX_IMAGE_BYTES) {
+        throw permanentError(`immagine troppo grande (${declared} byte)`, 413);
+    }
+    const reader = res.body.getReader();
+    const chunks = [];
+    let total = 0;
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+            break;
         }
-        const buffer = Buffer.from(await res.arrayBuffer());
-        const mime = res.headers.get('content-type') || 'image/jpeg';
-        return { buffer, mime };
+        total += value.length;
+        if (total > MAX_IMAGE_BYTES) {
+            await reader.cancel();
+            throw permanentError(`immagine troppo grande (oltre ${MAX_IMAGE_BYTES} byte)`, 413);
+        }
+        chunks.push(value);
+    }
+    return Buffer.concat(chunks);
+}
+
+// Scarica i byte dell'immagine scelta (al salvataggio). CAA risponde 307 verso archive.org:
+// i redirect si seguono a mano, controllando che ANCHE ogni destinazione sia un host ammesso
+async function downloadImage(url) {
+    if (!isAllowedImageUrl(url)) {
+        throw permanentError(`URL non ammesso: ${url}`);
+    }
+    return withRetry(async () => {
+        let current = url;
+        for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+            const res = await fetch(current, {
+                headers: { 'User-Agent': USER_AGENT },
+                redirect: 'manual',
+                signal: AbortSignal.timeout(IMAGE_TIMEOUT),
+            });
+            if (res.status >= 300 && res.status < 400) {
+                const next = new URL(res.headers.get('location') ?? '', current).href;
+                if (!isAllowedImageUrl(next)) {
+                    throw permanentError(`redirect verso un URL non ammesso: ${next}`);
+                }
+                current = next;
+                continue;
+            }
+            if (!res.ok) {
+                const err = new Error(`HTTP ${res.status} downloading ${current}`);
+                err.statusCode = res.status;
+                throw err;
+            }
+            const mime = res.headers.get('content-type') || 'image/jpeg';
+            if (!mime.startsWith('image/')) {
+                throw permanentError(`non è un'immagine (${mime})`, 415);
+            }
+            const buffer = await readLimited(res);
+            return { buffer, mime };
+        }
+        throw permanentError(`troppi redirect scaricando ${url}`);
     });
 }
 
 module.exports = {
+    isMbid,
+    isAllowedImageUrl,
     searchReleaseGroups,
     proposeCovers,
     fastFront,
