@@ -57,13 +57,43 @@ async function chunkFile(filepath) {
     })
 }
 
+// Dimensione del tag ID3v2 in testa al file = byte da saltare prima dell'audio.
+// Header di 10 byte: "ID3", versione (2), flag (1), size (4, syncsafe: 7 bit per byte,
+// header escluso); il flag 0x10 indica un footer di altri 10 byte. 0 se il tag non c'è.
+async function readAudioOffset(filepath) {
+    const handle = await fs.promises.open(filepath, 'r');
+    try {
+        const header = Buffer.alloc(10);
+        const { bytesRead } = await handle.read(header, 0, 10, 0);
+        if (bytesRead < 10 || header.toString('latin1', 0, 3) !== 'ID3') {
+            return 0;
+        }
+        const size = (header[6] << 21) | (header[7] << 14) | (header[8] << 7) | header[9];
+        const footer = (header[5] & 0x10) ? 10 : 0;
+        return 10 + size + footer;
+    }
+    finally {
+        await handle.close();
+    }
+}
+
+// duration: quella di music-metadata (per i CBR esclude già i tag, per i VBR usa l'header
+// Xing/Info), NON filesize*8/bitrate: conterebbe anche il tag ID3v2, che con una cover
+// APIC può valere decine di secondi. audioOffset serve alla UI per la mappa tempo→byte del seek.
 async function readMetadata(filepath) {
     try {
         const filesize = fs.statSync(filepath).size;
+        const audioOffset = await readAudioOffset(filepath);
         const { format } = await mm.parseFile(filepath, { duration: false });
         const bitrate = format.bitrate ?? null;
-        const duration = bitrate ? Math.round((filesize * 8) / bitrate) : null;
-        return { filesize, bitrate, duration };
+        let duration = null;
+        if (format.duration) {
+            duration = Math.round(format.duration);
+        }
+        else if (bitrate) {
+            duration = Math.round(((filesize - audioOffset) * 8) / bitrate);
+        }
+        return { filesize, bitrate, duration, audioOffset };
     } catch(err) {
         logger.error(err, 'readMetadata error');
         return { filesize: null, bitrate: null };
