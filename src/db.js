@@ -12,6 +12,7 @@ const users = require('./dbmodels/users');
 const jobs = require('./dbmodels/jobs');
 const user_id3 = require('./dbmodels/user_id3');
 const favorites = require('./dbmodels/favorites');
+const sessions = require('./dbmodels/sessions');
 const pool = require('./dbmodels/dbpool');
 
 const logger = require('./logger');
@@ -178,6 +179,23 @@ async function getParameters() {
 
 async function saveParameters(cronRequeue, cacheTTLDays, favCacheTTLDays) {
     return await pars.saveParameters(cronRequeue, cacheTTLDays, favCacheTTLDays);
+}
+
+// sessioni web (store di @fastify/session, vedi sessionStore.js)
+async function getSession(sid) {
+    return await sessions.getSession(sid);
+}
+
+async function setSession(sid, data, expires) {
+    return await sessions.setSession(sid, data, expires);
+}
+
+async function deleteSession(sid) {
+    return await sessions.deleteSession(sid);
+}
+
+async function deleteExpiredSessions() {
+    return await sessions.deleteExpiredSessions();
 }
 
 async function getUser(user, pwd) {
@@ -379,6 +397,11 @@ module.exports = {
     getUser,
     savePassword,
     updateSongStats,
+    // sessions
+    getSession,
+    setSession,
+    deleteSession,
+    deleteExpiredSessions,
     // jobs
     deleteJob,
     getJobs,

@@ -9,6 +9,7 @@ const cache = require('./cache');
 const streamer = require('./streamer');
 const params = require('./parameters');
 const coverFetch = require('./coverFetch');
+const sessionStore = require('./sessionStore');
 
 // =============== FASTIFY =============== // 
 
@@ -38,9 +39,13 @@ fastify.register(cors, {
 
 // cookie session handler
 fastify.register(cookie);
+// sessioni persistenti su PostgreSQL (sopravvivono ai riavvii del pod); con rolling la
+// scadenza (SESSION_TIMEOUTSECS, 90 giorni in k8s) riparte a ogni richiesta: si resta
+// loggati finché si usa l'app, come nelle app di streaming commerciali
 fastify.register(session, {
     cookieName: 'discocookie',
     secret: process.env.SESSION_SECRET,
+    store: sessionStore,
     cookie: {
         secure: 'auto', // true only for HTTPS, also handles sameSite
         //httpOnly: true,
@@ -68,6 +73,8 @@ fastify.register((instance, opts, done) => {
         if (dbuser) {
             const authuser = { username: dbuser.username, user_id: dbuser.user_id, authenticated: true };
             req.session.set('user', authuser);
+            // pulizia sessioni scadute (fire-and-forget): al login basta, niente cron
+            db.deleteExpiredSessions().catch((err) => logger.error(err, 'server: /login deleteExpiredSessions failed'));
             return authuser;
         }
         else {
