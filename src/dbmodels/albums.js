@@ -262,16 +262,18 @@ async function clearEmptyAlbums() {
         // esterno) fa sì che lo scan, alla riconvergenza per chiave naturale (title,album_id),
         // crei una NUOVA song e riassegni il file ad essa via upsertFile, lasciando la vecchia
         // song senza file → tiene vivo il vecchio album/artista. Vanno raccolte qui.
-        // song_id è referenziato nudo (niente CASCADE): prima user_id3/user_stats, poi songs.
-        stm = 'delete from user_id3 where song_id not in (select song_id from files)';
+        // song_id è referenziato senza CASCADE: prima user_id3/user_stats, poi songs.
+        // NOT EXISTS invece di NOT IN: files.song_id è nullable e un solo NULL
+        // renderebbe il NOT IN sempre falso (delete no-op silenzioso)
+        stm = 'delete from user_id3 u where not exists (select 1 from files f where f.song_id = u.song_id)';
         pars = [];
         logger.trace(pars, `DB: ${stm}`);
         await client.query(stm, pars);
-        stm = 'delete from user_stats where song_id not in (select song_id from files)';
+        stm = 'delete from user_stats u where not exists (select 1 from files f where f.song_id = u.song_id)';
         pars = [];
         logger.trace(pars, `DB: ${stm}`);
         await client.query(stm, pars);
-        stm = 'delete from songs where song_id not in (select song_id from files)';
+        stm = 'delete from songs s where not exists (select 1 from files f where f.song_id = s.song_id)';
         pars = [];
         logger.trace(pars, `DB: ${stm}`);
         await client.query(stm, pars);

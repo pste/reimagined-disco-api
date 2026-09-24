@@ -67,6 +67,12 @@ async function removeFile(song_id) {
         pars = [song_id];
         logger.trace(pars, `DB: ${stm}`);
         await client.query(stm, pars);
+        // delete user id3 overrides: user_id3.song_id REFERENCES songs (FK senza CASCADE),
+        // una riga pending/error rimasta farebbe fallire il delete della song
+        stm = 'delete from user_id3 where song_id=$1';
+        pars = [song_id];
+        logger.trace(pars, `DB: ${stm}`);
+        await client.query(stm, pars);
         // delete song
         stm = 'delete from songs where song_id=$1';
         pars = [song_id];

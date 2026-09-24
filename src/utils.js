@@ -8,10 +8,14 @@ function parseAlbumNumber(val) {
     else return "1";
 }
 
+// val can be: "01", "3/12" (TRCK n/total), "2001-05-12" (date as year), undefined
+// parseInt reads the leading number only
 function parseNumber(val) {
-    const rtn = Number(val)
-    if (isNaN(rtn)) return null
-    return rtn
+    const rtn = parseInt(String(val), 10);
+    if (isNaN(rtn)) {
+        return null;
+    }
+    return rtn;
 }
 
 function maxDate(a, b) {
