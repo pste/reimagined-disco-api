@@ -37,6 +37,9 @@ async function getJobs() {
 }
 
 // Atomically claim the oldest pending job, marking it as running.
+// FOR UPDATE SKIP LOCKED + status='pending' anche nella UPDATE esterna: senza, due claim
+// concorrenti potevano scegliere lo stesso job_id e reclamarlo entrambi (la UPDATE in attesa
+// ricontrolla solo la WHERE esterna, che era il solo job_id)
 async function claimNextJob() {
     const client = await pool.connect();
     try {
@@ -49,7 +52,9 @@ async function claimNextJob() {
                 AND name NOT IN (SELECT name FROM jobs WHERE status='running')
                 ORDER BY "when" ASC
                 LIMIT 1
+                FOR UPDATE SKIP LOCKED
             )
+            AND status='pending'
             RETURNING *`;
         logger.trace('DB: claimNextJob');
         const res = await client.query(stm);
@@ -57,6 +62,31 @@ async function claimNextJob() {
     }
     catch(err) {
         dblog.createLog('ERROR DB claimNextJob', err);
+        throw err;
+    }
+    finally {
+        client.release();
+    }
+}
+
+// Job rimasti 'running' da più di maxHours: il pod che li eseguiva è morto (OOM, nodo, kill)
+// senza chiuderli. Senza questo, il nome resterebbe bloccato per sempre (claimNextJob esclude
+// i nomi con un job running). Li chiude in error e li restituisce per il re-accodamento.
+async function reapStaleJobs(maxHours) {
+    const client = await pool.connect();
+    try {
+        const stm = `
+            UPDATE jobs SET status='error', ended=NOW(), result='timeout: job rimasto running (pod terminato?)'
+            WHERE status='running'
+            AND started < NOW() - make_interval(hours => $1)
+            RETURNING *`;
+        const pars = [maxHours];
+        logger.trace(pars, 'DB: reapStaleJobs');
+        const res = await client.query(stm, pars);
+        return res.rows;
+    }
+    catch(err) {
+        dblog.createLog('ERROR DB reapStaleJobs', err);
         throw err;
     }
     finally {
@@ -104,4 +134,4 @@ async function upsertPendingJob(name, when) {
     }
 }
 
-module.exports = { deleteJob, getJobs, claimNextJob, updateJobStatus, upsertPendingJob };
+module.exports = { deleteJob, getJobs, claimNextJob, reapStaleJobs, updateJobStatus, upsertPendingJob };

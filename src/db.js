@@ -199,7 +199,19 @@ async function getJobs() {
     return await jobs.getJobs();
 }
 
+// oltre questa durata un job 'running' si considera orfano (pod morto): largo, perché un
+// fullscan di una libreria grande via API può durare a lungo
+const STALE_JOB_HOURS = 6;
+
 async function claimNextJob() {
+    // prima del claim: chiude i job orfani e li ri-accoda (when=now). Senza re-accodamento
+    // un filescan orfano fermerebbe la cadenza cron (il requeue lo fa il pod a fine job) e
+    // un id3write lascerebbe le righe user_id3 pending senza nessun job che le scriva
+    const stale = await jobs.reapStaleJobs(STALE_JOB_HOURS);
+    for (const job of stale) {
+        logger.warn(`claimNextJob: stale job [${job.job_id}] ${job.name} closed as error, requeued`);
+        await jobs.upsertPendingJob(job.name, new Date());
+    }
     return await jobs.claimNextJob();
 }
 
