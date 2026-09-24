@@ -9,10 +9,12 @@ async function getCollection(user_id) {
         /*const stmOld = 'select al.*, ar.name \
                         from albums al \
                         join artists ar on al.artist_id = ar.artist_id';*/
+        // user_stats filtrate per utente nella ON (non nella WHERE: resterebbe una LEFT JOIN
+        // solo di nome e sparirebbero gli album mai ascoltati dall'utente)
         const stm = `WITH albumstats as (
-            SELECT so.album_id, MAX(f.created) as added, MAX(s.played) as played, MAX(s.stars) as stars, MAX(playcount) as playcount
+            SELECT so.album_id, MAX(f.created) as added, MAX(s.played) as played, MAX(s.stars) as stars, MAX(s.playcount) as playcount
             FROM songs so
-            LEFT JOIN user_stats s ON s.song_id = so.song_id
+            LEFT JOIN user_stats s ON s.song_id = so.song_id AND s.user_id = $1
             LEFT JOIN files f ON so.song_id = f.song_id
             GROUP BY so.album_id
         )
