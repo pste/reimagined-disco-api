@@ -12,6 +12,7 @@ const users = require('./dbmodels/users');
 const jobs = require('./dbmodels/jobs');
 const user_id3 = require('./dbmodels/user_id3');
 const favorites = require('./dbmodels/favorites');
+const pool = require('./dbmodels/dbpool');
 
 const logger = require('./logger');
 const utils = require('./utils');
@@ -243,7 +244,33 @@ async function setReleaseGroup(album_id, mbid) {
 // non cambia mai nel caso comune. La convergenza con lo scan è garantita comunque:
 // al rescan upsertAlbum trova per (title, artist_id) proprio la riga rinominata.
 // Solo se il rename coincide con un ALTRO album esistente si fa il merge (move).
+//
+// Tutto in UNA transazione: un errore a metà (vincolo violato, DB giù) fa rollback
+// completo invece di lasciare album aggiornato e tracce no.
 async function saveAlbumTags(album_id, meta, tracks) {
+    // titoli uguali tra le tracce inviate violerebbero UNIQUE(title, album_id): 409 parlante
+    const dupes = duplicateValues(tracks.map((t) => t.title).filter((t) => t != null));
+    if (dupes.length > 0) {
+        const err = new Error(`Più tracce con lo stesso titolo: ${dupes.join(', ')}`);
+        err.code = 'DUPLICATE_TRACK_TITLES';
+        throw err;
+    }
+    return await pool.transaction(() => _saveAlbumTags(album_id, meta, tracks));
+}
+
+function duplicateValues(values) {
+    const seen = new Set();
+    const dupes = new Set();
+    for (const v of values) {
+        if (seen.has(v)) {
+            dupes.add(v);
+        }
+        seen.add(v);
+    }
+    return [...dupes];
+}
+
+async function _saveAlbumTags(album_id, meta, tracks) {
     const UNKNOWN = 'UNKNOWN';
     // albums ha title/genre NOT NULL e year NOT NULL: stessi default dello scan
     const title = meta.album || UNKNOWN;
@@ -281,8 +308,32 @@ async function saveAlbumTags(album_id, meta, tracks) {
         albumId = target.album_id;
         await albums.updateAlbumById(albumId, title, artist.artist_id, year, genre);
     }
+    // campo vuoto (null) nel form = resta il valore attuale: title/track_nr/disc_nr sono NOT NULL
+    const current = new Map();
+    for (const s of await songs.getSongs({ albumid: albumId })) {
+        current.set(s.song_id, s);
+    }
+    const final = tracks.map((track) => {
+        const row = current.get(track.song_id);
+        return {
+            song_id:  track.song_id,
+            oldTitle: row?.title,
+            title:    track.title    ?? row?.title,
+            track_nr: track.track_nr ?? row?.track_nr,
+            disc_nr:  track.disc_nr  ?? row?.disc_nr,
+        };
+    });
+    // titoli in due passate: quelli che cambiano passano prima da un valore temporaneo
+    // unico, così uno scambio (A→"Bar", B→"Foo") non viola UNIQUE(title, album_id) a metà
+    for (const f of final) {
+        if (f.title !== f.oldTitle) {
+            await songs.updateSongFields(f.song_id, `__rename_tmp__${f.song_id}`, f.track_nr, f.disc_nr);
+        }
+    }
+    for (const f of final) {
+        await songs.updateSongFields(f.song_id, f.title, f.track_nr, f.disc_nr);
+    }
     for (const track of tracks) {
-        await songs.updateSongFields(track.song_id, track.title, track.track_nr, track.disc_nr);
         // in user_id3 i NULL significano "non scrivere quel frame": passa i valori grezzi
         await user_id3.upsertUserTag(track.song_id, {
             title:    track.title    ?? null,

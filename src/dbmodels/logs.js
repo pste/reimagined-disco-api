@@ -2,7 +2,8 @@ const logger = require('../logger');
 const pool = require('./dbpool');
 
 async function createLog(msg, details) {
-    const client = await pool.connect();
+    // fuori da un'eventuale transazione: il log deve restare anche dopo un rollback
+    const client = await pool.connectDirect();
     try {
         const stm = 'insert into logs(message,details) values ($1,$2)';
         const pars = [msg, details || ''];

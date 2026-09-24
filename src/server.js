@@ -168,9 +168,16 @@ fastify.register((instance, opts, done) => {
             newAlbumId = await db.saveAlbumTags(album_id, meta, trackList);
         }
         catch (err) {
-            // merge bloccato da tracce omonime: errore parlante alla UI (il toast mostra "error")
-            if (err.code === 'MERGE_DUPLICATE_TITLES') {
+            // merge bloccato da tracce omonime / titoli duplicati tra le tracce inviate:
+            // errore parlante alla UI (il toast mostra "error"). Il save è in transazione,
+            // quindi in ogni caso di errore il DB è tornato allo stato di prima
+            if (err.code === 'MERGE_DUPLICATE_TITLES' || err.code === 'DUPLICATE_TRACK_TITLES') {
                 return reply.status(409).send({ error: err.message });
+            }
+            // 23505 = unique_violation di PostgreSQL (es. un titolo uguale a una traccia
+            // dell'album non inclusa nel salvataggio)
+            if (err.code === '23505') {
+                return reply.status(409).send({ error: 'Titolo duplicato: esiste già un brano o un album con questo nome' });
             }
             throw err;
         }
