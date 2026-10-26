@@ -13,6 +13,7 @@ const jobs = require('./dbmodels/jobs');
 const user_id3 = require('./dbmodels/user_id3');
 const favorites = require('./dbmodels/favorites');
 const sessions = require('./dbmodels/sessions');
+const logs = require('./dbmodels/logs');
 const pool = require('./dbmodels/dbpool');
 
 const logger = require('./logger');
@@ -52,6 +53,11 @@ async function setFavorite(user_id, album_id, favorite) {
 
 async function getFavorites(user_id) {
     return await favorites.getFavorites(user_id);
+}
+
+// eventi della UI (player): righe "CLIENT <evento>" nella tabella logs
+async function saveClientLogs(rows) {
+    return await logs.createLogs(rows);
 }
 
 async function getCover(album_id) {
@@ -380,6 +386,7 @@ module.exports = {
     getCollection,
     setFavorite,
     getFavorites,
+    saveClientLogs,
     getSources: sources.getSources,
     getCover,
     getAlbums,

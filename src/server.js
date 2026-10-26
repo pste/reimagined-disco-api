@@ -161,6 +161,34 @@ fastify.register((instance, opts, done) => {
         return { ok: true };
     })
 
+    // eventi diagnostici della UI (player): la UI li accumula in localStorage e li invia
+    // a blocchi, anche in ritardo (pagina congelata in background) → ora del client in `t`
+    const CLIENTLOG_MAX_EVENTS = 200;
+    const CLIENTLOG_MAX_EVENT_LEN = 64;
+    instance.post('/clientlog', async (req, reply) => {
+        const events = req.body?.events;
+        if (!Array.isArray(events) || events.length === 0 || events.length > CLIENTLOG_MAX_EVENTS) {
+            return reply.status(400).send({ error: `events required (1-${CLIENTLOG_MAX_EVENTS})` });
+        }
+        const invalid = events.some((e) => typeof e?.event !== 'string' || e.event.length === 0 || e.event.length > CLIENTLOG_MAX_EVENT_LEN);
+        if (invalid) {
+            return reply.status(400).send({ error: 'event invalido' });
+        }
+        const user = req.session.get('user');
+        const userAgent = req.headers['user-agent'] ?? '';
+        const rows = events.map((e) => {
+            const details = (e.details && typeof e.details === 'object') ? e.details : {};
+            // i campi fissi dopo i details: il client non può sovrascrivere user_id
+            return {
+                message: `CLIENT ${e.event}`,
+                details: JSON.stringify({ ...details, t: e.t, user_id: user.user_id, ua: userAgent }),
+            };
+        });
+        logger.trace(`/clientlog [events:${rows.length}] ${user?.user_id}`);
+        await db.saveClientLogs(rows);
+        return { ok: true };
+    })
+
     instance.get('/sources', async function(req, reply) {
         logger.trace(`/sources`);
         const data = await db.getSources();
