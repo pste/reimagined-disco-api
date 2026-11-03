@@ -227,8 +227,22 @@ async function getJobs() {
 // oltre questa durata un job 'running' si considera orfano (pod morto): largo, perché un
 // fullscan di una libreria grande via API può durare a lungo
 const STALE_JOB_HOURS = 6;
+// storico dei job completati: oltre questi mesi i job 'done' vengono cancellati
+const PURGE_JOB_MONTHS = 2;
 
 async function claimNextJob() {
+    // pulizia dello storico (i job in error restano, si rimuovono a mano dalla pagina Jobs).
+    // È solo manutenzione: se fallisce (errore già loggato dal model) il claim prosegue
+    try {
+        const purged = await jobs.purgeOldJobs(PURGE_JOB_MONTHS);
+        if (purged > 0) {
+            logger.info(`claimNextJob: purged ${purged} done jobs older than ${PURGE_JOB_MONTHS} months`);
+        }
+    }
+    catch (err) {
+        logger.error(err, 'claimNextJob: purgeOldJobs failed');
+    }
+
     // prima del claim: chiude i job orfani e li ri-accoda (when=now). Senza re-accodamento
     // un filescan orfano fermerebbe la cadenza cron (il requeue lo fa il pod a fine job) e
     // un id3write lascerebbe le righe user_id3 pending senza nessun job che le scriva

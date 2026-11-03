@@ -94,6 +94,30 @@ async function reapStaleJobs(maxHours) {
     }
 }
 
+// Pulizia dello storico: cancella i job 'done' finiti da più di `months` mesi.
+// I job in 'error' restano finché non li rimuove l'utente dalla pagina Jobs;
+// pending e running non si toccano mai
+async function purgeOldJobs(months) {
+    const client = await pool.connect();
+    try {
+        const stm = `
+            DELETE FROM jobs
+            WHERE status='done'
+            AND COALESCE(ended, "when") < NOW() - make_interval(months => $1)`;
+        const pars = [months];
+        logger.trace(pars, 'DB: purgeOldJobs');
+        const res = await client.query(stm, pars);
+        return res.rowCount;
+    }
+    catch(err) {
+        dblog.createLog('ERROR DB purgeOldJobs', err);
+        throw err;
+    }
+    finally {
+        client.release();
+    }
+}
+
 async function updateJobStatus(job_id, status, result) {
     const client = await pool.connect();
     try {
@@ -134,4 +158,4 @@ async function upsertPendingJob(name, when) {
     }
 }
 
-module.exports = { deleteJob, getJobs, claimNextJob, reapStaleJobs, updateJobStatus, upsertPendingJob };
+module.exports = { deleteJob, getJobs, claimNextJob, reapStaleJobs, purgeOldJobs, updateJobStatus, upsertPendingJob };
