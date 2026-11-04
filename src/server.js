@@ -498,9 +498,15 @@ fastify.register((instance, opts, done) => {
         return { ok: true };
     });
 
-    instance.delete('/scan/song/:id', async (req, reply) => {
-        const { id } = req.params;
-        await db.removeFile(id);
+    // rimozione per file_id (non per song_id): un brano spostato/rinominato ha già la
+    // riga nuova con lo stesso song_id, cancellare per song_id la porterebbe via con sé.
+    // Song/stats/user_id3 rimasti senza file li raccoglie /scan/cleanup
+    instance.delete('/scan/file/:file_id', async (req, reply) => {
+        const file_id = Number(req.params.file_id);
+        if (!Number.isInteger(file_id)) {
+            return reply.status(400).send({ error: 'file_id invalido' });
+        }
+        await db.removeFile(file_id);
         return { ok: true };
     });
 

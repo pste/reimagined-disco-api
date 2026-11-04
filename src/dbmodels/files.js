@@ -33,7 +33,12 @@ async function upsertFile(song_id, basedir, file_path, file_name, modified, bitr
         res = await client.query(stm, pars);
         const sources = res.rows[0]
         //
-        stm = 'insert into files (source_id, song_id, file_path, file_name, modified, bitrate) values ($1,$2,$3,$4,$5,$6) \
+        // created: un file nuovo di una song che ha già un file (spostato/rinominato: la
+        // riga vecchia viene rimossa dopo, nello stesso scan) eredita la data di aggiunta
+        // più vecchia, così lo spostamento non fa risalire l'album tra gli "aggiunti".
+        // In caso di conflitto (stesso percorso) created non si tocca.
+        stm = 'insert into files (source_id, song_id, file_path, file_name, modified, bitrate, created) \
+                    values ($1,$2,$3,$4,$5,$6, coalesce((select min(created) from files where song_id=$2), now())) \
                     on conflict(source_id, file_path, file_name) do update set song_id=$2, modified=$5, bitrate=$6 \
                     returning *';
         pars = [sources.source_id, song_id, file_path, file_name, modified, bitrate ?? null];
@@ -53,29 +58,16 @@ async function upsertFile(song_id, basedir, file_path, file_name, modified, bitr
     }
 }
 
-async function removeFile(song_id) {
+// Cancella SOLO la riga files. Prima si cancellava per song_id insieme a stats,
+// user_id3 e song: ma più file possono avere lo stesso song_id (file spostato/rinominato,
+// la cui riga nuova riconverge sulla stessa song per (title, album_id); copie doppie),
+// e il delete portava via anche quelli ancora presenti su disco. Le song rimaste senza
+// file (con user_id3/user_stats) le cancella clearEmptyAlbums, a fine scan.
+async function removeFile(file_id) {
     const client = await pool.connect();
     try {
-        let stm, pars;
-        // delete file
-        stm = 'delete from files where song_id=$1';
-        pars = [song_id];
-        logger.trace(pars, `DB: ${stm}`);
-        await client.query(stm, pars);
-        // delete user stats
-        stm = 'delete from user_stats where song_id=$1';
-        pars = [song_id];
-        logger.trace(pars, `DB: ${stm}`);
-        await client.query(stm, pars);
-        // delete user id3 overrides: user_id3.song_id REFERENCES songs (FK senza CASCADE),
-        // una riga pending/error rimasta farebbe fallire il delete della song
-        stm = 'delete from user_id3 where song_id=$1';
-        pars = [song_id];
-        logger.trace(pars, `DB: ${stm}`);
-        await client.query(stm, pars);
-        // delete song
-        stm = 'delete from songs where song_id=$1';
-        pars = [song_id];
+        const stm = 'delete from files where file_id=$1';
+        const pars = [file_id];
         logger.trace(pars, `DB: ${stm}`);
         await client.query(stm, pars);
     }
