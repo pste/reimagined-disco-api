@@ -22,6 +22,36 @@ async function getFiles() {
     }
 }
 
+// libcheck: per ogni file i dati del DB da confrontare con gli ID3 su disco, più lo stato
+// della riga user_id3 (pending = modifica da UI non ancora scritta nel file, error = scrittura
+// fallita). LEFT JOIN: files.song_id è nullable
+async function getFilesWithTags() {
+    const client = await pool.connect();
+    try {
+        const stm = `
+            SELECT so."path" AS basedir, fi.file_path, fi.file_name,
+                s.title, s.track_nr, s.disc_nr,
+                al.title AS album, al."year", al.genre, ar."name" AS artist,
+                u.status AS id3_status
+            FROM files fi
+            INNER JOIN sources so ON fi.source_id = so.source_id
+            LEFT JOIN songs s ON s.song_id = fi.song_id
+            LEFT JOIN albums al ON al.album_id = s.album_id
+            LEFT JOIN artists ar ON ar.artist_id = al.artist_id
+            LEFT JOIN user_id3 u ON u.song_id = s.song_id`;
+        logger.trace('DB: getFilesWithTags');
+        const res = await client.query(stm);
+        return res.rows;
+    }
+    catch(err) {
+        dblog.createLog('ERROR DB getFilesWithTags', err);
+        throw err;
+    }
+    finally {
+        client.release();
+    }
+}
+
 async function upsertFile(song_id, basedir, file_path, file_name, modified, bitrate) {
     const client = await pool.connect();
     try {
@@ -81,6 +111,7 @@ async function removeFile(file_id) {
 }
 
 module.exports = {
+    getFilesWithTags,
     getFiles,
     upsertFile,
     removeFile,

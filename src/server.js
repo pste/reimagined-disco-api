@@ -66,8 +66,9 @@ fastify.register(fastifyRange, { throwOnInvalid: true });
 
 // =============== ROUTES =============== //
 
-// job che il pod jobs sa eseguire (vedi HANDLERS in reimagined-disco-jobs/src/jobs.js)
-const JOB_NAMES = ['filescan', 'fullscan', 'id3write'];
+// job che il pod jobs sa eseguire (vedi HANDLERS in reimagined-disco-jobs/src/jobs.js).
+// libcheck (report dei problemi della libreria) si lancia solo a mano: nessuno lo ri-accoda
+const JOB_NAMES = ['filescan', 'fullscan', 'id3write', 'libcheck'];
 
 // errore di validazione della creazione di un job, o null se la richiesta è valida
 function jobRequestError(name, when) {
@@ -440,6 +441,21 @@ fastify.register((instance, opts, done) => {
         return { ok: true };
     })
 
+    // report testuale del job come file da scaricare (es. libcheck-123.txt)
+    instance.get('/jobs/:id/report', async function(req, reply) {
+        const job_id = Number(req.params.id);
+        if (!Number.isInteger(job_id)) {
+            return reply.status(400).send({ error: 'job_id invalido' });
+        }
+        const job = await db.getJobReport(job_id);
+        if (!job?.report) {
+            return reply.status(404).send({ error: 'report non disponibile' });
+        }
+        reply.header('Content-Type', 'text/plain; charset=utf-8');
+        reply.header('Content-Disposition', `attachment; filename="${job.name}-${job_id}.txt"`);
+        return job.report;
+    })
+
     /*
     instance.get('/search/song', async function(req, reply) {
         const id = req.query.id;
@@ -478,6 +494,20 @@ fastify.register((instance, opts, done) => {
         return { ok: true };
     });
 
+    // il pod carica il report del job (testo, anche qualche MB: sta nel bodyLimit da 20 MB)
+    instance.put('/jobs/:id/report', async (req, reply) => {
+        const job_id = Number(req.params.id);
+        const { report } = req.body ?? {};
+        if (!Number.isInteger(job_id) || typeof report !== 'string') {
+            return reply.status(400).send({ error: 'job_id o report invalido' });
+        }
+        const updated = await db.setJobReport(job_id, report);
+        if (updated === 0) {
+            return reply.status(404).send({ error: 'job non trovato' });
+        }
+        return { ok: true };
+    });
+
     // scan support
     instance.get('/scan/basedir', async (req, reply) => {
         const basedir = await params.baseDir();
@@ -486,6 +516,11 @@ fastify.register((instance, opts, done) => {
 
     instance.get('/scan/files', async (req, reply) => {
         return db.getFiles();
+    });
+
+    // libcheck: dati del DB per file, da confrontare con gli ID3 su disco
+    instance.get('/scan/files/tags', async (req, reply) => {
+        return db.getFilesWithTags();
     });
 
     instance.post('/scan/song', async (req, reply) => {

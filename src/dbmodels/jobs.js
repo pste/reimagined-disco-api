@@ -22,7 +22,12 @@ async function deleteJob(job_id) {
 async function getJobs() {
     const client = await pool.connect();
     try {
-        const stm = 'SELECT * FROM jobs ORDER BY "when" DESC';
+        // il report (anche qualche MB) non viaggia nella lista: solo il flag has_report,
+        // il testo si scarica a parte con getJobReport
+        const stm = `
+            SELECT job_id, name, "when", status, started, ended, result,
+                (report IS NOT NULL) AS has_report
+            FROM jobs ORDER BY "when" DESC`;
         logger.trace('DB: getJobs');
         const res = await client.query(stm);
         return res.rows;
@@ -158,4 +163,42 @@ async function upsertPendingJob(name, when) {
     }
 }
 
-module.exports = { deleteJob, getJobs, claimNextJob, reapStaleJobs, purgeOldJobs, updateJobStatus, upsertPendingJob };
+// report testuale del job (es. libcheck): sostituisce quello precedente
+async function setJobReport(job_id, report) {
+    const client = await pool.connect();
+    try {
+        const stm = 'UPDATE jobs SET report=$2 WHERE job_id=$1';
+        const pars = [job_id, report];
+        logger.trace([job_id], 'DB: setJobReport');
+        const res = await client.query(stm, pars);
+        return res.rowCount;
+    }
+    catch(err) {
+        dblog.createLog('ERROR DB setJobReport', err);
+        throw err;
+    }
+    finally {
+        client.release();
+    }
+}
+
+// riga { name, report } o null se il job non esiste
+async function getJobReport(job_id) {
+    const client = await pool.connect();
+    try {
+        const stm = 'SELECT name, report FROM jobs WHERE job_id=$1';
+        const pars = [job_id];
+        logger.trace(pars, 'DB: getJobReport');
+        const res = await client.query(stm, pars);
+        return res.rows[0] || null;
+    }
+    catch(err) {
+        dblog.createLog('ERROR DB getJobReport', err);
+        throw err;
+    }
+    finally {
+        client.release();
+    }
+}
+
+module.exports = { deleteJob, getJobs, setJobReport, getJobReport, claimNextJob, reapStaleJobs, purgeOldJobs, updateJobStatus, upsertPendingJob };

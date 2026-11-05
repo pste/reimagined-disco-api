@@ -136,6 +136,11 @@ async function getFiles() {
     return await files.getFiles();
 }
 
+// libcheck
+async function getFilesWithTags() {
+    return await files.getFilesWithTags();
+}
+
 // filescan
 async function removeFile(file_id) {
     return await files.removeFile(file_id);
@@ -260,6 +265,14 @@ async function updateJobStatus(job_id, status, result) {
 
 async function upsertPendingJob(name, when) {
     return await jobs.upsertPendingJob(name, when);
+}
+
+async function setJobReport(job_id, report) {
+    return await jobs.setJobReport(job_id, report);
+}
+
+async function getJobReport(job_id) {
+    return await jobs.getJobReport(job_id);
 }
 
 /////////////////////////////////////////////////////////////////
@@ -429,6 +442,9 @@ module.exports = {
     claimNextJob,
     updateJobStatus,
     upsertPendingJob,
+    setJobReport,
+    getJobReport,
+    getFilesWithTags,
     // user id3
     saveAlbumTags,
     getPendingTags,
