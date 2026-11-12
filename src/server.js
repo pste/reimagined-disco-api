@@ -352,6 +352,17 @@ fastify.register((instance, opts, done) => {
         return streamer.streamFile(req, reply, song.fullpath);
     })
 
+    // mp3 intero da scaricare (tag ID3 quelli del file su disco)
+    instance.get('/download/song', async function(req, reply) {
+        const songid = Number(req?.query?.id);
+        if (!Number.isInteger(songid)) {
+            return reply.status(400).send({ error: 'song_id invalido' });
+        }
+        const song = await db.getSongInfo(songid);
+        logger.trace(`Download ${song.fullpath}`);
+        return streamer.downloadFile(reply, song.fullpath, song.filename);
+    })
+
     instance.get('/chunk/song', async function(req, reply) {
         const songid = req?.query?.id;
         const chunkIndex = req?.query?.chunkIndex ?? '1';

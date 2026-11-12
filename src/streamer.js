@@ -36,6 +36,18 @@ function streamFile( request, reply, filepath ) {
     return stream;
 }
 
+// file intero come allegato da scaricare (pulsante download nel player)
+function downloadFile( reply, filepath, filename ) {
+    const size = fs.statSync(filepath).size;
+    reply.headers({
+        'Content-Length': size,
+        // filename* (RFC 5987) per i nomi con accenti; filename ASCII come fallback
+        'Content-Disposition': `attachment; filename="${filename.replace(/[^\x20-\x7e]|"/g, '_')}"; filename*=UTF-8''${encodeURIComponent(filename)}`
+    });
+    reply.type('audio/mpeg');
+    return fs.createReadStream(filepath);
+}
+
 async function chunkFile(filepath) {
     return new Promise((resolve, reject) => {
         const buffer = [];
@@ -102,6 +114,7 @@ async function readMetadata(filepath) {
 
 module.exports = {
     streamFile,
+    downloadFile,
     chunkFile,
     readMetadata,
 }
