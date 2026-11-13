@@ -6,9 +6,9 @@ RUN npm install -g npm@latest
 
 # INSTALL PACKAGES
 WORKDIR /app
-ENV NODE_ENV=PRODUCTION
+ENV NODE_ENV=production
 COPY package*.json .
-RUN npm ci
+RUN npm ci --omit=dev
 
 # INSTALL APP
 COPY app.js .
