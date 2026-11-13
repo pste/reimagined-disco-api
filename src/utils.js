@@ -1,13 +1,5 @@
 const logger = require("./logger");
 
-// val can be: "1/2", undefined, 
-function parseAlbumNumber(val) {
-    const partOfSet = val || '1';
-    const diskNr = partOfSet.split('/');
-    if (diskNr.length > 0) return diskNr[0];
-    else return "1";
-}
-
 // val can be: "01", "3/12" (TRCK n/total), "2001-05-12" (date as year), undefined
 // parseInt reads the leading number only
 function parseNumber(val) {
@@ -29,7 +21,6 @@ function maxDate(a, b) {
 }
 
 module.exports = {
-    parseAlbumNumber,
     parseNumber,
     maxDate,
 }

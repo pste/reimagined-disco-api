@@ -1,17 +1,34 @@
 const logger = require('../logger');
 const pool = require('./dbpool');
 
-async function createLog(msg, details) {
-    // fuori da un'eventuale transazione: il log deve restare anche dopo un rollback
-    const client = await pool.connectDirect();
-    try {
-        const stm = 'insert into logs(message,details) values ($1,$2)';
-        const pars = [msg, details || ''];
-        logger.trace(pars, `DB: ${stm}`);
-        await client.query(stm, pars);
+// un Error passato così com'è a pg diventerebbe JSON senza message né stack (non sono
+// proprietà enumerabili): si salva il testo
+function detailsText(details) {
+    if (details instanceof Error) {
+        return details.stack || details.message;
     }
-    finally {
-        client.release();
+    return details || '';
+}
+
+// Non lancia MAI: i model la chiamano senza await dentro i loro catch, quindi un errore
+// qui (es. DB non raggiungibile) sarebbe una promise rifiutata senza gestore, che fa
+// terminare il processo Node
+async function createLog(msg, details) {
+    try {
+        // fuori da un'eventuale transazione: il log deve restare anche dopo un rollback
+        const client = await pool.connectDirect();
+        try {
+            const stm = 'insert into logs(message,details) values ($1,$2)';
+            const pars = [msg, detailsText(details)];
+            logger.trace(pars, `DB: ${stm}`);
+            await client.query(stm, pars);
+        }
+        finally {
+            client.release();
+        }
+    }
+    catch (err) {
+        logger.error(err, `createLog failed [${msg}]`);
     }
 }
 
@@ -35,7 +52,23 @@ async function createLogs(rows) {
     }
 }
 
+// cancella i log più vecchi di `months` mesi; ritorna quante righe ha cancellato
+async function purgeOldLogs(months) {
+    const client = await pool.connectDirect();
+    try {
+        const stm = 'delete from logs where created < now() - make_interval(months => $1)';
+        const pars = [months];
+        logger.trace(pars, `DB: ${stm}`);
+        const res = await client.query(stm, pars);
+        return res.rowCount;
+    }
+    finally {
+        client.release();
+    }
+}
+
 module.exports = {
     createLog,
     createLogs,
+    purgeOldLogs,
 }

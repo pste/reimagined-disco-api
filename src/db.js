@@ -18,98 +18,33 @@ const pool = require('./dbmodels/dbpool');
 
 const logger = require('./logger');
 const utils = require('./utils');
-// const { getSources } = require('./dbmodels/sources');
 
 /////////////////////////////////////////////////////////////////
 
-// no cover here on purpose: this runs in hot paths (/chunk/song, /stream/song, /scan/song/:id)
-// and covers are served separately by /search/cover
-async function _getAlbumInfo(album_id) {
-    const album = await albums.getAlbum(album_id);
-    const artist = await artists.getArtist(album.artist_id);
-
-    const data = {
-        album_id,
-		artist: artist.name,
-		album: album.title,
-		year: album.year,
-		genre: album.genre,
-    }
-    return data;
-}
-
 /////////////////////////////////////////////////////////////////
 
-// library page
-async function getCollection(user_id) {
-    let data = [];
-    data = await albums.getCollection(user_id);
-    return data;
-}
-
-async function setFavorite(user_id, album_id, favorite) {
-    return await favorites.setFavorite(user_id, album_id, favorite);
-}
-
-async function getFavorites(user_id) {
-    return await favorites.getFavorites(user_id);
-}
-
-// eventi della UI (player): righe "CLIENT <evento>" nella tabella logs
-async function saveClientLogs(rows) {
-    return await logs.createLogs(rows);
-}
-
-async function getCover(album_id) {
-    let data = [];
-    data = await albums.getCover(album_id);
-    return data;
-}
-
-// artist page
-async function getAlbums(params) {
-    // get a list of albums
-    let data = [];
-    if (params.artistid) {
-        logger.trace('getAlbumsByArtist');
-        data = await albums.getAlbumsByArtist(params.artistid);
-    }
-    else { //default to this
-        logger.trace('getAlbumsByTitle');
-        data = await albums.getAlbumsByTitle(params.title);
-    }
-    // normalize output
-    data = await Promise.all(
-        data.map(async (el) => {
-            return await _getAlbumInfo(el.album_id);
-        })
-    );
-    return data;
-}
-
-// album page
-async function getSongs(params) {
-    return await songs.getSongs(params);
-}
-
-// song details page
+// song details page. null se la song (o il suo file) non esiste: le rotte rispondono 404
 async function getSongInfo(song_id) {
-    const file = await songs.getSongFile(song_id);
-    const song = await songs.getSong(song_id);
-    const albumdata = await _getAlbumInfo(song.album_id);
-
-    const data = {
-        song_id,
-        sourcepath: file.source_path,
-        filepath: file.file_path, 
-        filename: file.file_name,
-        fullpath: path.join(file.source_path, file.file_path, file.file_name),
-        modified: file.modified,
-        title: song.title,
-		trackNumber: song.track_nr,
-		discNumber: song.disc_nr,
+    const row = await songs.getSongInfo(song_id);
+    if (!row) {
+        return null;
     }
-    return Object.assign(albumdata, data);
+    return {
+        album_id: row.album_id,
+        artist: row.artist,
+        album: row.album,
+        year: row.year,
+        genre: row.genre,
+        song_id: row.song_id,
+        sourcepath: row.source_path,
+        filepath: row.file_path,
+        filename: row.file_name,
+        fullpath: path.join(row.source_path, row.file_path, row.file_name),
+        modified: row.modified,
+        title: row.title,
+        trackNumber: row.track_nr,
+        discNumber: row.disc_nr,
+    };
 }
 
 // stats page
@@ -124,27 +59,7 @@ async function fullStats() {
     }
 }
 
-//
-async function updateSongStats(user_id, song_id) {
-    return await songstats.touchPlayed(user_id, song_id);
-}
-
 /////////////////////////////////////////////////////////////////
-
-// filescan
-async function getFiles() {
-    return await files.getFiles();
-}
-
-// libcheck
-async function getFilesWithTags() {
-    return await files.getFilesWithTags();
-}
-
-// filescan
-async function removeFile(file_id) {
-    return await files.removeFile(file_id);
-}
 
 // filescan 
 async function updateSong(fileinfo) {
@@ -161,7 +76,7 @@ async function updateSong(fileinfo) {
 		year: utils.parseNumber(fileinfo.tags.year)                 || 1900,
 		genre: fileinfo.tags.genre                                  || UNKNOWN,
 		trackNumber: utils.parseNumber(fileinfo.tags.trackNumber)   || 0,
-		discNumber: utils.parseAlbumNumber(fileinfo.tags.partOfSet) || 1,
+		discNumber: utils.parseNumber(fileinfo.tags.partOfSet)   || 1, // TPOS "1/2" → 1
         cover: fileinfo.tags?.image?.imageBuffer // .data ?
     }
     if (songdata.artist === 'UNKNOWN') {
@@ -177,37 +92,7 @@ async function updateSong(fileinfo) {
     return file;
 }
 
-// filescan 
-async function clearEmptyAlbums() {
-    return await albums.clearEmptyAlbums();
-}
-
 /////////////////////////////////////////////////////////////////
-
-async function getParameters() {
-    return await pars.getParameters();
-}
-
-async function saveParameters(cronRequeue, cacheTTLDays, favCacheTTLDays) {
-    return await pars.saveParameters(cronRequeue, cacheTTLDays, favCacheTTLDays);
-}
-
-// sessioni web (store di @fastify/session, vedi sessionStore.js)
-async function getSession(sid) {
-    return await sessions.getSession(sid);
-}
-
-async function setSession(sid, data, expires) {
-    return await sessions.setSession(sid, data, expires);
-}
-
-async function deleteSession(sid) {
-    return await sessions.deleteSession(sid);
-}
-
-async function deleteExpiredSessions() {
-    return await sessions.deleteExpiredSessions();
-}
 
 async function getUser(user, pwd) {
     const pwdhash = crypto.createHash('sha256').update(pwd).digest('hex');
@@ -221,23 +106,17 @@ async function savePassword(userid, pwd) {
 
 /////////////////////////////////////////////////////////////////
 
-async function deleteJob(job_id) {
-    return await jobs.deleteJob(job_id);
-}
-
-async function getJobs() {
-    return await jobs.getJobs();
-}
-
 // oltre questa durata un job 'running' si considera orfano (pod morto): largo, perché un
 // fullscan di una libreria grande via API può durare a lungo
 const STALE_JOB_HOURS = 6;
 // storico dei job completati: oltre questi mesi i job 'done' vengono cancellati
 const PURGE_JOB_MONTHS = 2;
+// tabella logs (errori DB + eventi CLIENT della UI): oltre questi mesi le righe si cancellano
+const PURGE_LOG_MONTHS = 3;
 
 async function claimNextJob() {
-    // pulizia dello storico (i job in error restano, si rimuovono a mano dalla pagina Jobs).
-    // È solo manutenzione: se fallisce (errore già loggato dal model) il claim prosegue
+    // pulizia dello storico (i job in error restano, si rimuovono a mano dalla pagina Jobs)
+    // e dei log vecchi. È solo manutenzione: se fallisce (errore già loggato dal model) il claim prosegue
     try {
         const purged = await jobs.purgeOldJobs(PURGE_JOB_MONTHS);
         if (purged > 0) {
@@ -246,6 +125,15 @@ async function claimNextJob() {
     }
     catch (err) {
         logger.error(err, 'claimNextJob: purgeOldJobs failed');
+    }
+    try {
+        const purged = await logs.purgeOldLogs(PURGE_LOG_MONTHS);
+        if (purged > 0) {
+            logger.info(`claimNextJob: purged ${purged} logs older than ${PURGE_LOG_MONTHS} months`);
+        }
+    }
+    catch (err) {
+        logger.error(err, 'claimNextJob: purgeOldLogs failed');
     }
 
     // prima del claim: chiude i job orfani e li ri-accoda (when=now). Senza re-accodamento
@@ -259,35 +147,7 @@ async function claimNextJob() {
     return await jobs.claimNextJob();
 }
 
-async function updateJobStatus(job_id, status, result) {
-    return await jobs.updateJobStatus(job_id, status, result);
-}
-
-async function upsertPendingJob(name, when) {
-    return await jobs.upsertPendingJob(name, when);
-}
-
-async function setJobReport(job_id, report) {
-    return await jobs.setJobReport(job_id, report);
-}
-
-async function getJobReport(job_id) {
-    return await jobs.getJobReport(job_id);
-}
-
 /////////////////////////////////////////////////////////////////
-
-async function getPendingTags() {
-    return await user_id3.getPendingTags();
-}
-
-async function setAlbumCover(album_id, cover) {
-    return await user_id3.setAlbumCover(album_id, cover);
-}
-
-async function setReleaseGroup(album_id, mbid) {
-    return await albums.setReleaseGroup(album_id, mbid);
-}
 
 // Save dell'editor album: write-through sul DB (stato desiderato, subito coerente
 // per editor e Collection) + coda user_id3 per il job id3write che scriverà i file.
@@ -399,57 +259,48 @@ async function _saveAlbumTags(album_id, meta, tracks) {
     return albumId;
 }
 
-async function deleteUserTag(song_id, updated_at) {
-    return await user_id3.deleteUserTag(song_id, updated_at);
-}
-
-async function setUserTagError(song_id) {
-    return await user_id3.setUserTagError(song_id);
-}
-
 /////////////////////////////////////////////////////////////////
+// Le funzioni senza logica propria sono quelle dei model, esportate così come sono
 module.exports = {
     // web
-    getCollection,
-    setFavorite,
-    getFavorites,
-    saveClientLogs,
+    getCollection: albums.getCollection,
+    setFavorite: favorites.setFavorite,
+    saveClientLogs: logs.createLogs, // eventi della UI (player): righe "CLIENT <evento>" nella tabella logs
     getSources: sources.getSources,
-    getCover,
-    getAlbums,
-    getSongs,
+    getCover: albums.getCover,
+    getSongs: songs.getSongs,
     getSongInfo,
     stats: fullStats,
-    // filescan:
-    getFiles,
-    removeFile,
+    updateSongStats: songstats.touchPlayed,
+    // filescan / libcheck
+    getFiles: files.getFiles,
+    getFilesWithTags: files.getFilesWithTags,
+    removeFile: files.removeFile,
     updateSong,
-    clearEmptyAlbums,
-    // generic:
-    getParameters,
-    saveParameters,
+    clearEmptyAlbums: albums.clearEmptyAlbums,
+    // parameters, users
+    getParameters: pars.getParameters,
+    saveParameters: pars.saveParameters,
     getUser,
     savePassword,
-    updateSongStats,
-    // sessions
-    getSession,
-    setSession,
-    deleteSession,
-    deleteExpiredSessions,
+    // sessioni web (store di @fastify/session, vedi sessionStore.js)
+    getSession: sessions.getSession,
+    setSession: sessions.setSession,
+    deleteSession: sessions.deleteSession,
+    deleteExpiredSessions: sessions.deleteExpiredSessions,
     // jobs
-    deleteJob,
-    getJobs,
+    deleteJob: jobs.deleteJob,
+    getJobs: jobs.getJobs,
     claimNextJob,
-    updateJobStatus,
-    upsertPendingJob,
-    setJobReport,
-    getJobReport,
-    getFilesWithTags,
+    updateJobStatus: jobs.updateJobStatus,
+    upsertPendingJob: jobs.upsertPendingJob,
+    setJobReport: jobs.setJobReport,
+    getJobReport: jobs.getJobReport,
     // user id3
     saveAlbumTags,
-    getPendingTags,
-    setAlbumCover,
-    setReleaseGroup,
-    deleteUserTag,
-    setUserTagError,
+    getPendingTags: user_id3.getPendingTags,
+    setAlbumCover: user_id3.setAlbumCover,
+    setReleaseGroup: albums.setReleaseGroup,
+    deleteUserTag: user_id3.deleteUserTag,
+    setUserTagError: user_id3.setUserTagError,
 }

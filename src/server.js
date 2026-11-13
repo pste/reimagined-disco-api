@@ -3,7 +3,6 @@ const fastifyApp = require('fastify');
 const cors = require('@fastify/cors');
 const cookie = require('@fastify/cookie');
 const session = require('@fastify/session');
-const fastifyRange = require('fastify-range'); // needed to stream data
 const db = require('./db');
 const cache = require('./cache');
 const streamer = require('./streamer');
@@ -11,6 +10,16 @@ const params = require('./parameters');
 const coverFetch = require('./coverFetch');
 const sessionStore = require('./sessionStore');
 const loginLimiter = require('./loginLimiter');
+const cronParser = require('cron-parser');
+
+// variabili senza le quali l'API partirebbe "rotta" in silenzio: senza BEARER_TOKEN le
+// rotte interne accetterebbero "Bearer undefined", senza SESSION_* le sessioni non funzionano
+const REQUIRED_ENV = ['BEARER_TOKEN', 'SESSION_SECRET', 'SESSION_TIMEOUTSECS'];
+const missingEnv = REQUIRED_ENV.filter((name) => !process.env[name]);
+if (missingEnv.length > 0) {
+    logger.error(`server: variabili d'ambiente mancanti: ${missingEnv.join(', ')}`);
+    process.exit(1);
+}
 
 // =============== FASTIFY =============== // 
 
@@ -62,8 +71,6 @@ fastify.register(session, {
     rolling: true,
 });
 
-fastify.register(fastifyRange, { throwOnInvalid: true });
-
 // =============== ROUTES =============== //
 
 // job che il pod jobs sa eseguire (vedi HANDLERS in reimagined-disco-jobs/src/jobs.js).
@@ -80,11 +87,30 @@ function jobRequestError(name, when) {
     }
     return null;
 }
-/*
-fastify.get('/', function(req, reply) {
-    reply.send({ api: "Online", authenticated: req.session.authenticated });
-})*/
 
+// intero >= min (accetta anche la stringa numerica di params/query), altrimenti null
+function toInt(value, min = 1) {
+    const n = Number(value);
+    if (value === null || value === '' || !Number.isInteger(n) || n < min) {
+        return null;
+    }
+    return n;
+}
+
+function isValidCron(expression) {
+    if (typeof expression !== 'string' || !expression.trim()) {
+        return false;
+    }
+    try {
+        cronParser.parseExpression(expression);
+        return true;
+    }
+    catch (err) {
+        return false;
+    }
+}
+
+const SONG_NOT_FOUND = { error: 'brano non trovato' };
 // OPEN ROUTES
 fastify.register((instance, opts, done) => {
     instance.post('/login', async (req, reply) => {
@@ -155,10 +181,14 @@ fastify.register((instance, opts, done) => {
 
     // toggle preferito (per utente) su un album
     instance.post('/favorite', async (req, reply) => {
-        const { album_id, favorite } = req.body;
+        const { favorite } = req.body ?? {};
+        const album_id = toInt(req.body?.album_id);
+        if (album_id === null) {
+            return reply.status(400).send({ error: 'album_id invalido' });
+        }
         const user = req.session.get('user');
         logger.trace(`/favorite [album:${album_id}] [favorite:${favorite}] ${user?.user_id}`);
-        await db.setFavorite(user.user_id, album_id, favorite);
+        await db.setFavorite(user.user_id, album_id, favorite === true);
         return { ok: true };
     })
 
@@ -200,14 +230,6 @@ fastify.register((instance, opts, done) => {
         const album_id = req?.query?.album_id;
         logger.trace(`/search/cover [${album_id}]`);
         const data = await db.getCover(album_id);
-        return data;
-    })
-
-    instance.get('/search/albums', async function(req, reply) {
-        const title = req?.query?.title || '';
-        const artistid = req?.query?.artistid;
-        logger.trace(`/search/albums [${title}|${artistid}]`);
-        const data = await db.getAlbums({ title, artistid });
         return data;
     })
 
@@ -344,14 +366,6 @@ fastify.register((instance, opts, done) => {
         return {}
     })
 
-    instance.get('/stream/song', async function(req, reply) {
-        const songid = req?.query?.id;
-        const song = await db.getSongInfo(songid);
-        logger.trace(`Streaming ${song.fullpath}`);
-        //
-        return streamer.streamFile(req, reply, song.fullpath);
-    })
-
     // mp3 intero da scaricare (tag ID3 quelli del file su disco)
     instance.get('/download/song', async function(req, reply) {
         const songid = Number(req?.query?.id);
@@ -359,47 +373,52 @@ fastify.register((instance, opts, done) => {
             return reply.status(400).send({ error: 'song_id invalido' });
         }
         const song = await db.getSongInfo(songid);
+        if (!song) {
+            return reply.status(404).send(SONG_NOT_FOUND);
+        }
         logger.trace(`Download ${song.fullpath}`);
         return streamer.downloadFile(reply, song.fullpath, song.filename);
     })
 
+    // un chunk del brano (1 MB, base64) letto dal disco all'offset giusto. Il chunk 1 porta
+    // anche i metadata (durata, bitrate, audioOffset, totalChunks). Oltre la fine: data null
     instance.get('/chunk/song', async function(req, reply) {
-        const songid = req?.query?.id;
-        const chunkIndex = req?.query?.chunkIndex ?? '1';
-        const chunkId = `${songid}:${chunkIndex}`;
-        logger.trace(`Chunking ${chunkId}`);
-
-        // past-the-end probe: metadata already cached → answer null without re-chunking the file
-        let metadata = cache.getMetadata(songid);
-        if (metadata && Number(chunkIndex) > metadata.totalChunks) {
-            logger.trace(`Chunk ${chunkId} beyond totalChunks ${metadata.totalChunks}`);
-            return { data: null };
+        const songid = toInt(req?.query?.id);
+        const chunkIndex = toInt(req?.query?.chunkIndex ?? 1);
+        if (songid === null || chunkIndex === null) {
+            return reply.status(400).send({ error: 'id o chunkIndex invalido' });
         }
+        logger.trace(`Chunking ${songid}:${chunkIndex}`);
 
-        // cache fail: refresh whole song
-        // get-then-check (not has-then-get): the chunk could expire between the two calls.
-        // chunk 1 must also carry metadata, so refresh if that expired too.
-        let chunk = cache.get(chunkId);
-        if (!chunk || (chunkIndex === '1' && !metadata)) {
+        // percorso e metadata del file: in cache per qualche minuto (una query e un parse
+        // del file per brano, non per chunk)
+        let info = cache.getSongFile(songid);
+        let filesize = info ? await streamer.fileSize(info.fullpath) : null;
+        if (filesize === null) {
+            // non in cache, oppure il file in cache è stato spostato/cancellato: si chiede al DB
             const song = await db.getSongInfo(songid);
-            logger.trace(`Now caching ${JSON.stringify(song)}`);
-            const [chunked, fileMeta] = await Promise.all([
-                streamer.chunkFile(song.fullpath),
-                streamer.readMetadata(song.fullpath)
-            ]);
-            logger.trace(`Now cached ${JSON.stringify(song)}`)
-            const totalChunks = await cache.storeChunks(songid, chunked);
-            metadata = { ...fileMeta, totalChunks };
-            cache.storeMetadata(songid, metadata);
-            logger.trace(`Chunked ${chunkId}`);
-            chunk = cache.get(chunkId);
+            if (!song) {
+                return reply.status(404).send(SONG_NOT_FOUND);
+            }
+            info = { fullpath: song.fullpath, filesize: null, metadata: null };
+            filesize = await streamer.fileSize(info.fullpath);
+            if (filesize === null) {
+                return reply.status(404).send({ error: 'file del brano non trovato su disco' });
+            }
+        }
+        // file riscritto nel frattempo (es. id3write: il tag cambia dimensione): i metadata
+        // in cache non valgono più
+        if (!info.metadata || info.filesize !== filesize) {
+            const fileMeta = await streamer.readMetadata(info.fullpath);
+            info.filesize = filesize;
+            info.metadata = { ...fileMeta, totalChunks: streamer.totalChunks(filesize) };
+            cache.storeSongFile(songid, info);
         }
 
-        // return buffer block
-        logger.trace(`Chunk cached ${chunkId}`);
+        const chunk = await streamer.readChunk(info.fullpath, chunkIndex);
         const data = chunk ? chunk.toString('base64') : null;
-        if (chunkIndex === '1') {
-            return { metadata, data };
+        if (chunkIndex === 1) {
+            return { metadata: info.metadata, data };
         }
         return { data };
     })
@@ -422,9 +441,17 @@ fastify.register((instance, opts, done) => {
     })
 
     instance.post('/parameters', async function(req, reply) {
-        const { cronRequeue, cacheTTLDays, favCacheTTLDays } = req.body;
+        const { cronRequeue, cacheTTLDays, favCacheTTLDays } = req.body ?? {};
         logger.trace(`/parameters [cronRequeue:${cronRequeue}] [cacheTTLDays:${cacheTTLDays}] [favCacheTTLDays:${favCacheTTLDays}]`);
-        await db.saveParameters(cronRequeue, cacheTTLDays, favCacheTTLDays);
+        // una cron non valida farebbe fallire il requeue del filescan nel pod jobs.
+        // Stringa vuota = nessun requeue automatico (il pod lo salta)
+        if (cronRequeue !== '' && !isValidCron(cronRequeue)) {
+            return reply.status(400).send({ error: 'cronRequeue non è una espressione cron valida' });
+        }
+        if (toInt(cacheTTLDays) === null || toInt(favCacheTTLDays) === null) {
+            return reply.status(400).send({ error: 'cacheTTLDays e favCacheTTLDays devono essere interi maggiori di 0' });
+        }
+        await db.saveParameters(cronRequeue, toInt(cacheTTLDays), toInt(favCacheTTLDays));
         return { ok: true };
     })
 
@@ -447,7 +474,10 @@ fastify.register((instance, opts, done) => {
     })
 
     instance.delete('/jobs/:id', async function(req, reply) {
-        const { id } = req.params;
+        const id = toInt(req.params.id);
+        if (id === null) {
+            return reply.status(400).send({ error: 'job_id invalido' });
+        }
         await db.deleteJob(id);
         return { ok: true };
     })
@@ -466,15 +496,6 @@ fastify.register((instance, opts, done) => {
         reply.header('Content-Disposition', `attachment; filename="${job.name}-${job_id}.txt"`);
         return job.report;
     })
-
-    /*
-    instance.get('/search/song', async function(req, reply) {
-        const id = req.query.id;
-        logger.trace(`/search/song ${id}`);
-        //
-        const data = await db.getSongInfo(id);
-        await reply.send(data);
-    })*/
 
     done()
 }, { prefix: '/api' });
@@ -499,8 +520,12 @@ fastify.register((instance, opts, done) => {
     });
 
     instance.patch('/jobs/:id', async (req, reply) => {
-        const { id } = req.params;
-        const { status, result } = req.body;
+        const id = toInt(req.params.id);
+        const { status, result } = req.body ?? {};
+        // il pod chiude un job solo come done o error
+        if (id === null || !['done', 'error'].includes(status)) {
+            return reply.status(400).send({ error: 'job_id o status invalido' });
+        }
         await db.updateJobStatus(id, status, result);
         return { ok: true };
     });
@@ -564,6 +589,9 @@ fastify.register((instance, opts, done) => {
     instance.get('/scan/song/:id', async (req, reply) => {
         const { id } = req.params;
         const song = await db.getSongInfo(id);
+        if (!song) {
+            return reply.status(404).send(SONG_NOT_FOUND);
+        }
         return { fullpath: song.fullpath };
     });
 

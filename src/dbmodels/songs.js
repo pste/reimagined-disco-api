@@ -1,208 +1,92 @@
-const logger = require('../logger');
-const dblog = require('./logs');
-const pool = require('./dbpool');
+const { query } = require('./dbquery');
 
 async function getSongs(params) {
-    const client = await pool.connect();
-    try {
-        // join files per esporre il bitrate (proprietà del file fisico) insieme al brano
-        const base = 'select s.*, f.bitrate from songs s left join files f on f.song_id = s.song_id';
-        let stm, pars;
-        if (params.albumid) {
-            stm = `${base} where s.album_id = $1`;
-            pars = [params.albumid];
-        }
-        else if (params.title) {
-            stm = `${base} where s.title ilike $1`;
-            pars = [`%${params.title}%`];
-        }
-        else {
-            stm = base;
-            pars = [];
-        }
-        logger.trace(pars, `DB: ${stm}`);
-        const res = await client.query(stm, pars);
-        const rows = res.rows;
-        logger.trace(`DB ==> ${rows.length}`)
-        return rows;
+    // bitrate (proprietà del file fisico) insieme al brano. Sottoquery e non join:
+    // una song può avere più file (copie doppie) e il join la restituirebbe più volte
+    const base = 'select s.*, (select max(f.bitrate) from files f where f.song_id = s.song_id) as bitrate from songs s';
+    let stm, pars;
+    if (params.albumid) {
+        stm = `${base} where s.album_id = $1`;
+        pars = [params.albumid];
     }
-    catch(err) {
-        dblog.createLog('ERROR DB getSongs', err);
-        throw err;
+    else if (params.title) {
+        stm = `${base} where s.title ilike $1`;
+        pars = [`%${params.title}%`];
     }
-    finally {
-        client.release();
+    else {
+        stm = base;
+        pars = [];
     }
+    const res = await query('getSongs', stm, pars);
+    return res.rows;
 }
 
-async function getSong(song_id) {
-    const client = await pool.connect();
-    try {
-        const stm = 'select * from songs where song_id = $1';
-        const pars = [song_id];
-        logger.trace(pars, `DB: ${stm}`);
-        const res = await client.query(stm, pars);
-        const rows = res.rows;
-        logger.trace(`DB ==> ${rows.length}`)
-        return rows[0];
-    }
-    catch(err) {
-        dblog.createLog('ERROR DB getSong', err);
-        throw err;
-    }
-    finally {
-        client.release();
-    }
-}
-
-async function getSongStats(song_id) {
-    const client = await pool.connect();
-    try {
-        const stm = 'select * from statistics where song_id = $1';
-        const pars = [song_id];
-        logger.trace(pars, `DB: ${stm}`);
-        const res = await client.query(stm, pars);
-        const rows = res.rows;
-        logger.trace(`DB ==> ${rows.length}`)
-        return rows[0];
-    }
-    catch(err) {
-        dblog.createLog('ERROR DB getSongStats', err);
-        throw err;
-    }
-    finally {
-        client.release();
-    }
-}
-
-async function getSongFile(song_id) {
-    const client = await pool.connect();
-    try {
-        const stm = 'select so.path as source_path,fi.* from files fi join sources so on fi.source_id=so.source_id where fi.song_id = $1';
-        const pars = [song_id];
-        logger.trace(pars, `DB: ${stm}`);
-        const res = await client.query(stm, pars);
-        const rows = res.rows;
-        logger.trace(`DB ==> ${rows.length}`)
-        return rows[0];
-    }
-    catch(err) {
-        dblog.createLog('ERROR DB getSongFile', err);
-        throw err;
-    }
-    finally {
-        client.release();
-    }
+// brano + album + artista + file in una sola query (percorso caldo: streaming, download,
+// id3write). Con più file per la stessa song (copie doppie) vale il più vecchio
+async function getSongInfo(song_id) {
+    const stm = `
+        SELECT s.song_id, s.title, s.track_nr, s.disc_nr,
+            al.album_id, al.title AS album, al."year", al.genre, ar."name" AS artist,
+            so."path" AS source_path, f.file_path, f.file_name, f.modified
+        FROM songs s
+        INNER JOIN albums al ON al.album_id = s.album_id
+        INNER JOIN artists ar ON ar.artist_id = al.artist_id
+        INNER JOIN files f ON f.song_id = s.song_id
+        INNER JOIN sources so ON so.source_id = f.source_id
+        WHERE s.song_id = $1
+        ORDER BY f.file_id
+        LIMIT 1`;
+    const pars = [song_id];
+    const res = await query('getSongInfo', stm, pars);
+    return res.rows[0];
 }
 
 async function upsertSong(title, tracknr, discnr, album_id) {
-    const client = await pool.connect();
-    try {
-        const stm = 'insert into songs (title, track_nr, disc_nr, album_id) values ($1,$2,$3,$4) \
-                    on conflict(title,album_id) do update set title=$1, track_nr=$2, disc_nr=$3, album_id=$4 \
-                    returning *';
-        const pars = [title, tracknr, discnr, album_id];
-        logger.trace(pars, `DB: ${stm}`);
-        const res = await client.query(stm, pars);
-        const rows = res.rows;
-        logger.trace(`DB ==> ${rows.length}`)
-        return rows[0];
-    }
-    catch(err) {
-        dblog.createLog('ERROR DB upsertSong', err);
-        throw err;
-    }
-    finally {
-        client.release();
-    }
+    const stm = 'insert into songs (title, track_nr, disc_nr, album_id) values ($1,$2,$3,$4) \
+                on conflict(title,album_id) do update set title=$1, track_nr=$2, disc_nr=$3, album_id=$4 \
+                returning *';
+    const pars = [title, tracknr, discnr, album_id];
+    const res = await query('upsertSong', stm, pars);
+    return res.rows[0];
 }
 
 // write-through dell'editor: aggiorna la traccia in place — song_id resta stabile,
 // le FK di files/user_stats/user_id3 non si toccano
 async function updateSongFields(song_id, title, track_nr, disc_nr) {
-    const client = await pool.connect();
-    try {
-        const stm = 'update songs set title=$2, track_nr=$3, disc_nr=$4 where song_id=$1';
-        const pars = [song_id, title, track_nr, disc_nr];
-        logger.trace(pars, `DB: ${stm}`);
-        await client.query(stm, pars);
-    }
-    catch(err) {
-        dblog.createLog('ERROR DB updateSongFields', err);
-        throw err;
-    }
-    finally {
-        client.release();
-    }
+    const stm = 'update songs set title=$2, track_nr=$3, disc_nr=$4 where song_id=$1';
+    const pars = [song_id, title, track_nr, disc_nr];
+    await query('updateSongFields', stm, pars);
 }
 
 // titoli presenti in entrambi gli album: violerebbero UNIQUE(title, album_id)
 // al moveSongs, quindi bloccano il merge dell'editor (409)
 async function getDuplicateTitles(from_album_id, to_album_id) {
-    const client = await pool.connect();
-    try {
-        const stm = 'select a.title from songs a \
-                    join songs b on b.album_id = $2 and b.title = a.title \
-                    where a.album_id = $1';
-        const pars = [from_album_id, to_album_id];
-        logger.trace(pars, `DB: ${stm}`);
-        const res = await client.query(stm, pars);
-        const rows = res.rows;
-        logger.trace(`DB ==> ${rows.length}`)
-        return rows.map(r => r.title);
-    }
-    catch(err) {
-        dblog.createLog('ERROR DB getDuplicateTitles', err);
-        throw err;
-    }
-    finally {
-        client.release();
-    }
+    const stm = 'select a.title from songs a \
+                join songs b on b.album_id = $2 and b.title = a.title \
+                where a.album_id = $1';
+    const pars = [from_album_id, to_album_id];
+    const res = await query('getDuplicateTitles', stm, pars);
+    const rows = res.rows;
+    return rows.map(r => r.title);
 }
 
 // rename album/artista nell'editor: sposta tutte le tracce sul nuovo album row
 async function moveSongs(from_album_id, to_album_id) {
-    const client = await pool.connect();
-    try {
-        const stm = 'update songs set album_id=$2 where album_id=$1';
-        const pars = [from_album_id, to_album_id];
-        logger.trace(pars, `DB: ${stm}`);
-        await client.query(stm, pars);
-    }
-    catch(err) {
-        dblog.createLog('ERROR DB moveSongs', err);
-        throw err;
-    }
-    finally {
-        client.release();
-    }
+    const stm = 'update songs set album_id=$2 where album_id=$1';
+    const pars = [from_album_id, to_album_id];
+    await query('moveSongs', stm, pars);
 }
 
 async function countSongs() {
-    const client = await pool.connect();
-    try {
-        const stm = 'select count(*) from songs';
-        const pars = [];
-        logger.trace(pars, `DB: ${stm}`);
-        const res = await client.query(stm, pars);
-        const rows = res.rows;
-        logger.trace(`DB ==> ${rows.length}`)
-        return rows;
-    }
-    catch(err) {
-        dblog.createLog('ERROR DB countSongs', err);
-        throw err;
-    }
-    finally {
-        client.release();
-    }
+    const stm = 'select count(*) from songs';
+    const pars = [];
+    const res = await query('countSongs', stm, pars);
+    return res.rows;
 }
 
 module.exports = {
     getSongs,
-    getSong,
-    getSongStats,
-    getSongFile,
+    getSongInfo,
     upsertSong,
     updateSongFields,
     getDuplicateTitles,

@@ -1,26 +1,11 @@
-const logger = require('../logger');
-const dblog = require('./logs');
-const pool = require('./dbpool');
+const { query } = require('./dbquery');
 
 async function getSources() {
-    const client = await pool.connect();
-    try {
-        let stm, pars;
-        stm = 'select * from sources';
-        pars = [];
-        logger.trace(pars, `DB: ${stm}`);
-        const res = await client.query(stm, pars);
-        const rows = res.rows;
-        logger.trace(`DB ==> ${rows.length}`)
-        return rows;
-    }
-    catch(err) {
-        dblog.createLog('ERROR DB getSources', err);
-        throw err;
-    }
-    finally {
-        client.release();
-    }
+    let stm, pars;
+    stm = 'select * from sources';
+    pars = [];
+    const res = await query('getSources', stm, pars);
+    return res.rows;
 }
 
 module.exports = {

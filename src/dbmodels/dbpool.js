@@ -1,4 +1,5 @@
 const pg = require('pg');
+const logger = require('../logger');
 const { AsyncLocalStorage } = require('node:async_hooks');
 const { Pool } = pg;
 
@@ -12,6 +13,12 @@ const config = {
     database: process.env.PGDATABASE,
 }
 const pool = new Pool(config)
+
+// connessione inattiva caduta (DB riavviato, rete): pg emette 'error' sul pool e, senza
+// un listener, Node termina il processo. Il pool scarta da solo quella connessione
+pool.on('error', (err) => {
+    logger.error(err, 'dbpool: idle client error');
+});
 
 // Transazioni IMPLICITE: dentro transaction(fn) ogni connect() dei model restituisce la
 // connessione della transazione (con release() che non fa nulla), quindi i model non

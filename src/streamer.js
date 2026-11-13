@@ -2,40 +2,6 @@ const fs = require('node:fs');
 const mm = require('music-metadata');
 const logger = require('./logger');
 
-function streamFile( request, reply, filepath ) {
-    const audioSize = fs.statSync(filepath).size;
-    logger.info(`STREAM: Requested size: ${audioSize}`);
-    const range = request.range(audioSize);
-    logger.info(range, `STREAM: Requested range.`);
-    if (!range) {
-        const error = new Error('Range Not Satisfiable');
-        error.statusCode = 416;
-        throw error;
-    }
-
-    // Handle only the first range requested
-    const singleRange = range.ranges[0]
-
-    // Define the size of the chunk to send
-    const chunkSize = 1 * 1e6; // 1MB
-    const { start } = singleRange;
-    const end = Math.min(start + chunkSize, audioSize - 1);
-    const contentLength = end - start + 1; // end is inclusive
-
-    // Set the appropriate headers for range requests
-    reply.headers({
-        'Accept-Ranges': 'bytes',
-        'Content-Range': `bytes ${start}-${end}/${audioSize}`,
-        'Content-Length': contentLength
-    })
-
-    // Send a 206 Partial Content status code
-    reply.code(206);
-    reply.type('audio/mpeg');
-    const stream = fs.createReadStream(filepath, { start, end });
-    return stream;
-}
-
 // file intero come allegato da scaricare (pulsante download nel player)
 function downloadFile( reply, filepath, filename ) {
     const size = fs.statSync(filepath).size;
@@ -48,25 +14,52 @@ function downloadFile( reply, filepath, filename ) {
     return fs.createReadStream(filepath);
 }
 
-async function chunkFile(filepath) {
-    return new Promise((resolve, reject) => {
-        const buffer = [];
-        const stream = fs.createReadStream(filepath, { highWaterMark: 1 * 1e6 }); // 1Mb blocks
+// i brani viaggiano verso la UI a blocchi di dimensione fissa (la UI ci conta: mappa
+// tempo→chunk del seek in useStreamedAudio.js, CHUNK_BYTES)
+const CHUNK_BYTES = 1e6;
 
-        stream.on('data', (chunk) => {
-            // chunk è un Buffer di ~highWaterMark byte (l'ultimo può essere più piccolo)
-            buffer.push(chunk);
-            logger.trace(`received block ${chunk.length} bytes`)
-        });
-        stream.on('end', () => {
-            logger.trace(`done buffering ${buffer.length} blocks`)
-            resolve(buffer);
-        });
-        stream.on('error', (err) => {
-            console.error(err);
-            reject(err);
-        }); 
-    })
+function totalChunks(filesize) {
+    return Math.ceil(filesize / CHUNK_BYTES);
+}
+
+// dimensione del file in byte, null se il file non esiste
+async function fileSize(filepath) {
+    try {
+        return (await fs.promises.stat(filepath)).size;
+    }
+    catch (err) {
+        if (err.code === 'ENOENT') {
+            return null;
+        }
+        throw err;
+    }
+}
+
+// Legge dal disco solo il chunk richiesto (1-based). Prima si leggeva l'intero file in
+// memoria per servirne 1 MB. Ritorna null oltre la fine del file.
+async function readChunk(filepath, chunkIndex) {
+    const handle = await fs.promises.open(filepath, 'r');
+    try {
+        const buffer = Buffer.alloc(CHUNK_BYTES);
+        const start = (chunkIndex - 1) * CHUNK_BYTES;
+        // una read può restituire meno byte di quelli chiesti (filesystem di rete):
+        // si continua finché il blocco è pieno o il file è finito
+        let filled = 0;
+        while (filled < CHUNK_BYTES) {
+            const { bytesRead } = await handle.read(buffer, filled, CHUNK_BYTES - filled, start + filled);
+            if (bytesRead === 0) {
+                break;
+            }
+            filled += bytesRead;
+        }
+        if (filled === 0) {
+            return null;
+        }
+        return buffer.subarray(0, filled);
+    }
+    finally {
+        await handle.close();
+    }
 }
 
 // Dimensione del tag ID3v2 in testa al file = byte da saltare prima dell'audio.
@@ -113,8 +106,9 @@ async function readMetadata(filepath) {
 }
 
 module.exports = {
-    streamFile,
     downloadFile,
-    chunkFile,
+    fileSize,
+    readChunk,
+    totalChunks,
     readMetadata,
 }
